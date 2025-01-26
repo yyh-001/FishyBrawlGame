@@ -13,7 +13,7 @@ export default defineConfig({
     port: "3001",
     proxy: {
       '/api': {
-        target: 'https://xkmvwivzjdqv.sealosbja.site',
+        target: process.env.VITE_API_BASE_URL,
         changeOrigin: true,
         secure: false
       }
