@@ -1,6 +1,3 @@
-让我为这个项目生成一个 README 文档：
-
-```markdown:README.md
 # Fishy Brawl - 在线卡牌对战游戏
 
 Fishy Brawl 是一款轻便的多人在线类酒馆战旗的对战游戏，旨在为玩家提供随时随地、爽快的对战体验。
@@ -104,11 +101,10 @@ VITE_API_BASE_URL=your-api-base-url
 
 ## 联系方式
 
-- 项目维护者：[Your Name]
-- Email：[your-email@example.com]
+- 项目维护者：yyh
+- Email：[1807875605@qq.com]
 
 ## 致谢
 
 感谢所有为这个项目做出贡献的开发者！
-```
 
