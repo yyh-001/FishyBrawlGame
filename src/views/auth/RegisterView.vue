@@ -47,15 +47,38 @@
             <form @submit.prevent="handleSubmit" class="space-y-6">
               <div>
                 <label for="email" class="text-sm font-medium text-gray-200 block mb-2">邮箱地址</label>
+                <div class="flex gap-2">
+                  <input
+                    id="email"
+                    v-model="email"
+                    type="email"
+                    required
+                    class="flex-1 px-3 py-2 bg-white/20 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="请输入邮箱地址"
+                  />
+                  <button 
+                    type="button"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                    @click="handleSendCode"
+                    :disabled="loading || codeSending || countdown > 0"
+                  >
+                    {{ countdown > 0 ? `${countdown}秒` : '获取验证码' }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label for="verificationCode" class="text-sm font-medium text-gray-200 block mb-2">验证码</label>
                 <input
-                  id="email"
-                  v-model="email"
-                  type="email"
+                  id="verificationCode"
+                  v-model="verificationCode"
+                  type="text"
                   required
                   class="w-full px-3 py-2 bg-white/20 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="请输入邮箱地址"
+                  placeholder="请输入验证码"
                 />
               </div>
+
               <div>
                 <label for="username" class="text-sm font-medium text-gray-200 block mb-2">用户名</label>
                 <input
@@ -140,30 +163,87 @@ const email = ref('')
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const verificationCode = ref('')
 const agreeToTerms = ref(false)
 const loading = ref(false)
+const codeSending = ref(false)
+const countdown = ref(0)
 
-const handleSubmit = async () => {
-  if (password.value !== confirmPassword.value) {
-    ElMessage.error('两次输入的密码不一致')
+// 开始倒计时
+const startCountdown = () => {
+  countdown.value = 60
+  const timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timer)
+    }
+  }, 1000)
+}
+
+// 发送验证码
+const handleSendCode = async () => {
+  if (!email.value) {
+    ElMessage.warning('请输入邮箱地址')
     return
   }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(email.value)) {
+    ElMessage.warning('请输入有效的邮箱地址')
+    return
+  }
+
+  try {
+    codeSending.value = true
+    const response = await authStore.sendVerificationCode(email.value, 'register')
+    if (response.code === 200) {
+      ElMessage.success(response.message || '验证码已发送')
+      startCountdown()
+    }
+  } catch (error) {
+    console.error('Send code failed:', error)
+  } finally {
+    codeSending.value = false
+  }
+}
+
+const handleSubmit = async () => {
+  if (!validateForm()) return
 
   try {
     loading.value = true
     await authStore.register({
       email: email.value,
       username: username.value,
-      password: password.value
+      password: password.value,
+      verificationCode: verificationCode.value
     })
     ElMessage.success('注册成功')
     router.push('/login')
   } catch (error) {
     console.error('注册失败:', error)
-    ElMessage.error(error.message || '注册失败，请重试')
   } finally {
     loading.value = false
   }
+}
+
+const validateForm = () => {
+  if (!email.value || !username.value || !password.value || !confirmPassword.value || !verificationCode.value) {
+    ElMessage.warning('请填写所有必填项')
+    return false
+  }
+
+  if (password.value !== confirmPassword.value) {
+    ElMessage.error('两次输入的密码不一致')
+    return false
+  }
+
+  if (!agreeToTerms.value) {
+    ElMessage.warning('请阅读并同意服务条款和隐私政策')
+    return false
+  }
+
+  return true
 }
 </script>
 
