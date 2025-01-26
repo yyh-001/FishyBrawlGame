@@ -1,0 +1,103 @@
+@import './base.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 自定义基础样式 */
+@layer base {
+  html, body {
+    @apply min-h-screen w-full m-0 p-0;
+  }
+
+  body {
+    @apply antialiased;
+  }
+
+  #app {
+    @apply min-h-screen w-full m-0 p-0;
+  }
+}
+
+/* 自定义组件样式 */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white;
+  }
+
+  .btn-secondary {
+    @apply bg-white/20 hover:bg-white/30 text-white;
+  }
+
+  .form-input {
+    @apply w-full px-3 py-2 rounded-md border border-gray-300 
+    bg-white/20 text-white placeholder-gray-300
+    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-200 mb-2;
+  }
+
+  .auth-layout {
+    @apply min-h-screen w-full flex flex-col lg:flex-row;
+  }
+
+  .auth-left {
+    @apply lg:w-1/2 p-6 lg:p-12 flex flex-col justify-center items-center relative bg-gradient-to-br from-bg-primary to-bg-secondary;
+  }
+
+  .auth-right {
+    @apply flex-1 lg:w-1/2 flex items-center justify-center p-6 lg:p-12;
+  }
+
+  .auth-card {
+    @apply backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-xl;
+    background-color: var(--bg-primary);
+    opacity: 0.95;
+  }
+}
+
+/* 自定义工具类 */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+#app {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-weight: normal;
+}
+
+a,
+.green {
+  text-decoration: none;
+  color: hsla(160, 100%, 37%, 1);
+  transition: 0.4s;
+  padding: 3px;
+}
+
+@media (hover: hover) {
+  a:hover {
+    background-color: hsla(160, 100%, 37%, 0.2);
+  }
+}
+
+@media (min-width: 1024px) {
+  body {
+    display: flex;
+    place-items: center;
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 0 2rem;
+  }
+}

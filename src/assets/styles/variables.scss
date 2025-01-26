@@ -1,0 +1,31 @@
+// 创建变量模块
+$primary-color: #2563eb;
+$primary-hover: #1d4ed8;
+$success-color: #22c55e;
+$warning-color: #f59e0b;
+$danger-color: #ef4444;
+
+$text-primary: #1f2937;
+$text-secondary: #4b5563;
+$text-disabled: #9ca3af;
+
+$bg-primary: #ffffff;
+$bg-secondary: #f3f4f6;
+$bg-tertiary: #e5e7eb;
+
+$dark-text-primary: #f3f4f6;
+$dark-text-secondary: #d1d5db;
+$dark-text-disabled: #6b7280;
+
+$dark-bg-primary: #111827;
+$dark-bg-secondary: #1f2937;
+$dark-bg-tertiary: #374151;
+
+// 断点
+$breakpoints: (
+  'sm': 640px,
+  'md': 768px,
+  'lg': 1024px,
+  'xl': 1280px,
+  '2xl': 1536px
+); 

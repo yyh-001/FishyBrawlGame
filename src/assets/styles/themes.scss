@@ -1,0 +1,31 @@
+@use 'variables' as *;
+
+:root {
+  // 主题色
+  --primary-color: #{$primary-color};
+  --primary-hover: #{$primary-hover};
+  --success-color: #{$success-color};
+  --warning-color: #{$warning-color};
+  --danger-color: #{$danger-color};
+  
+  // 文字颜色
+  --text-primary: #{$text-primary};
+  --text-secondary: #{$text-secondary};
+  --text-disabled: #{$text-disabled};
+  
+  // 背景色
+  --bg-primary: #{$bg-primary};
+  --bg-secondary: #{$bg-secondary};
+  --bg-tertiary: #{$bg-tertiary};
+  
+  // 暗色模式
+  &[data-theme="dark"] {
+    --text-primary: #{$dark-text-primary};
+    --text-secondary: #{$dark-text-secondary};
+    --text-disabled: #{$dark-text-disabled};
+    
+    --bg-primary: #{$dark-bg-primary};
+    --bg-secondary: #{$dark-bg-secondary};
+    --bg-tertiary: #{$dark-bg-tertiary};
+  }
+} 
