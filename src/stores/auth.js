@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { authApi } from '@/api/auth'
+import { connectWebSocket, disconnectWebSocket } from '@/services/websocket'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
@@ -12,20 +13,19 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       const response = await authApi.login(email, password)
-      if (response?.data?.code === 200) {  // 检查响应状态码
+      if (response?.data?.code === 200) {
         token.value = response.data.data.token
-        user.value = response.data.data.userInfo || { 
-          username: email.split('@')[0],
-          email: email,
-          rating: 1000
-        }
+        user.value = response.data.data.userInfo
         localStorage.setItem('token', token.value)
         localStorage.setItem('userInfo', JSON.stringify(user.value))
         isAuthenticated.value = true
+        
+        // 确保传入正确的 token
+        connectWebSocket(response.data.data.token)
+        
         return response.data
-      } else {
-        throw new Error(response?.data?.message || '登录失败')
       }
+      throw new Error(response?.data?.message || '登录失败')
     } catch (error) {
       console.error('Login error:', error)
       throw error
@@ -57,6 +57,9 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated.value = false
     localStorage.removeItem('token')
     localStorage.removeItem('userInfo')
+    
+    // 登出时断开 WebSocket
+    disconnectWebSocket()
   }
 
   const sendVerificationCode = async (email, type = 'register') => {
@@ -144,12 +147,19 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 初始化时从localStorage恢复用户信息
+  // 在创建 store 时初始化
   const initializeFromStorage = () => {
-    const storedUserInfo = localStorage.getItem('userInfo')
-    if (storedUserInfo) {
+    const storedToken = localStorage.getItem('token')
+    if (storedToken) {
+      token.value = storedToken
+      isAuthenticated.value = true
       try {
-        user.value = JSON.parse(storedUserInfo)
+        const storedUser = JSON.parse(localStorage.getItem('userInfo'))
+        if (storedUser) {
+          user.value = storedUser
+        }
+        // 如果有token就连接WebSocket
+        connectWebSocket(storedToken)
       } catch (e) {
         console.error('Failed to parse stored user info:', e)
         logout() // 如果解析失败，清除存储的信息

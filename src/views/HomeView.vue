@@ -92,7 +92,7 @@
         </div>
 
         <!-- 开始匹配按钮 -->
-        <div class="flex-grow flex items-center justify-center mt-12">
+        <div class="flex-grow flex items-center justify-center mt-8 mb-16">
           <button 
             class="transform hover:scale-110 transition-all duration-300 bg-blue-600 hover:bg-blue-700 text-white px-16 py-4 rounded-xl font-medium text-xl shadow-lg hover:shadow-2xl"
             @click="showMatchmaking = true"
@@ -103,6 +103,11 @@
 
         <!-- 匹配对战弹窗 -->
         <matchmaking-modal v-model:visible="showMatchmaking" />
+
+        <!-- 添加房间列表 -->
+        <div class="mt-8">
+          <room-list />
+        </div>
       </main>
     </div>
   </div>
@@ -116,6 +121,7 @@ import { useThemeStore } from '@/stores/theme'
 import { ElMessage } from 'element-plus'
 import { Moon, Sunny } from '@element-plus/icons-vue'
 import MatchmakingModal from '@/components/game/MatchmakingModal.vue'
+import RoomList from '@/components/game/RoomList.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

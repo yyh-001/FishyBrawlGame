@@ -58,11 +58,19 @@
                   />
                   <button 
                     type="button"
-                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                    class="w-10 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
                     @click="handleSendCode"
                     :disabled="loading || codeSending || countdown > 0"
                   >
-                    {{ countdown > 0 ? `${countdown}秒` : '获取验证码' }}
+                    <template v-if="countdown > 0">
+                      <span class="text-xs">{{ countdown }}</span>
+                    </template>
+                    <template v-else>
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 2L11 13"></path>
+                        <path d="M22 2L15 22L11 13L2 9L22 2z"></path>
+                      </svg>
+                    </template>
                   </button>
                 </div>
               </div>

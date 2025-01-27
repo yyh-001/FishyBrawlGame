@@ -24,6 +24,14 @@ const routes = [
     path: '/forgot-password',
     name: 'ForgotPassword',
     component: () => import('../views/auth/ForgotPasswordView.vue')
+  },
+  {
+    path: '/game/:roomId',
+    name: 'Game',
+    component: () => import('../views/game/GameView.vue'),
+    meta: {
+      requiresAuth: true
+    }
   }
 ]
 
