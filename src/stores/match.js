@@ -5,6 +5,12 @@ import { matchApi } from '@/api/match'
 export const useMatchStore = defineStore('match', () => {
   const loading = ref(false)
 
+  const matchingModalVisible = ref(false)
+  
+  const setMatchingModalVisible = (visible) => {
+    matchingModalVisible.value = visible
+  }
+
   // 获取房间列表
   const getRooms = async () => {
     try {
@@ -117,6 +123,34 @@ export const useMatchStore = defineStore('match', () => {
     }
   }
 
+  // 开始游戏
+  const startGame = async (roomId) => {
+    try {
+      const response = await matchApi.startGame(roomId)
+      if (response?.data?.code === 200) {
+        return response.data
+      }
+      throw new Error(response?.data?.message || '开始游戏失败')
+    } catch (error) {
+      console.error('Start game failed:', error)
+      throw error
+    }
+  }
+
+  // 修改开始匹配方法，添加房间ID参数
+  const startMatch = async (roomId) => {
+    try {
+      const response = await matchApi.startMatch(roomId)
+      if (response?.data?.code === 200) {
+        return response.data
+      }
+      throw new Error(response?.data?.message || '开始匹配失败')
+    } catch (error) {
+      console.error('Start match failed:', error)
+      throw error
+    }
+  }
+
   return {
     loading,
     getRooms,
@@ -126,6 +160,10 @@ export const useMatchStore = defineStore('match', () => {
     joinRoom,
     leaveRoom,
     ready,
-    cancelReady
+    cancelReady,
+    startGame,
+    matchingModalVisible,
+    setMatchingModalVisible,
+    startMatch
   }
 }) 

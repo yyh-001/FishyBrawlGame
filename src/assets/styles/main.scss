@@ -104,4 +104,24 @@ body {
   &-full {
     width: 100%;
   }
+}
+
+/* 添加移动端弹窗样式 */
+@media (max-width: 768px) {
+  .el-dialog {
+    width: 90% !important;
+    margin: 10vh auto !important;
+  }
+
+  .el-dialog__body {
+    padding: 1rem !important;
+  }
+
+  .el-dialog__header {
+    padding: 1rem !important;
+  }
+
+  .el-dialog__footer {
+    padding: 1rem !important;
+  }
 } 

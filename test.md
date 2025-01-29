@@ -446,7 +446,7 @@ socket.emit('createRoom', { name: '测试房间' }, (response) => {
 
 ### 4. 加入房间
 
-**发送**:
+#### 1. 发送加入房间请求
 ```javascript
 socket.emit('joinRoom', { roomId: 'room_id' }, (response) => {
     console.log(response);
@@ -469,6 +469,12 @@ socket.emit('joinRoom', { roomId: 'room_id' }, (response) => {
                 username: "player1",
                 ready: false,
                 isCreator: true
+            },
+            {
+                userId: "507f1f77bcf86cd799439013",
+                username: "player2",
+                ready: false,
+                isCreator: false
             }
         ],
         alreadyInRoom: false,
@@ -476,6 +482,80 @@ socket.emit('joinRoom', { roomId: 'room_id' }, (response) => {
     }
 }
 ```
+
+**错误响应**:
+```javascript
+{
+    success: false,
+    error: "错误信息" // 可能的错误：
+    // - 无效的房间ID
+    // - 房间不存在
+    // - 房间已满
+    // - 您已在其他房间中
+    // - 您正在匹配中，无法加入房间
+    // - 房间已开始游戏或已结束
+}
+```
+
+#### 2. 监听玩家加入事件
+```javascript
+socket.on('playerJoined', (data) => {
+    console.log('新加入的玩家:', data.newPlayer);
+    console.log('当前房间玩家列表:', data.players);
+});
+```
+
+**事件数据格式**:
+```javascript
+{
+    roomId: "507f1f77bcf86cd799439011",
+    newPlayer: {
+        userId: "507f1f77bcf86cd799439013",
+        username: "player2",
+        ready: false,
+        isCreator: false
+    },
+    players: [
+        {
+            userId: "507f1f77bcf86cd799439012",
+            username: "player1",
+            ready: false,
+            isCreator: true
+        },
+        {
+            userId: "507f1f77bcf86cd799439013",
+            username: "player2",
+            ready: false,
+            isCreator: false
+        }
+    ]
+}
+```
+
+#### 3. 相关事件
+- roomListUpdated: 房间列表更新事件，需要重新获取房间列表
+- playerLeft: 玩家离开事件
+- readyStateChanged: 准备状态改变事件
+- roomDeleted: 房间被删除事件
+
+#### 4. 注意事项
+1. 加入房间前需要先验证 roomId 的有效性
+2. 一个玩家同时只能在一个房间中
+3. 不能加入已满或已开始游戏的房间
+4. 加入房间后会自动加入对应的 socket room
+5. 所有玩家都会收到新玩家加入的通知
+6. 房间列表会自动更新
+7. 断线重连时需要重新加入房间
+
+#### 5. 测试场景
+1. 正常加入房间
+2. 加入不存在的房间
+3. 加入已满的房间
+4. 重复加入同一房间
+5. 在匹配中时尝试加入房间
+6. 已在其他房间时尝试加入新房间
+7. 加入已开始游戏的房间
+8. 断线重连测试
 
 ### 5. 离开房间
 
@@ -549,7 +629,22 @@ socket.on('roomListUpdated', () => {
 ### 玩家加入房间
 ```javascript
 socket.on('playerJoined', (data) => {
-    console.log('新玩家加入:', data.players);
+    console.log('新玩家:', data.newPlayer);
+    console.log('当前房间玩家列表:', data.players);
+    // data.newPlayer 格式:
+    // {
+    //     userId: string,
+    //     username: string,
+    //     ready: boolean,
+    //     isCreator: boolean
+    // }
+    // data.players 格式:
+    // [{
+    //     userId: string,
+    //     username: string,
+    //     ready: boolean,
+    //     isCreator: boolean
+    // }]
 });
 ```
 
@@ -557,6 +652,13 @@ socket.on('playerJoined', (data) => {
 ```javascript
 socket.on('playerLeft', (data) => {
     console.log('玩家离开:', data.players);
+    // data.players 格式:
+    // [{
+    //     userId: string,
+    //     username: string,
+    //     ready: boolean,
+    //     isCreator: boolean
+    // }]
 });
 ```
 
@@ -744,57 +846,17 @@ socket.emit('getCurrentRoom', (response) => {
 }
 ```
 
-### 3. 创建房间
-
-**发送**:
+#### 2.3 创建房间
 ```javascript
 socket.emit('createRoom', { name: '测试房间' }, (response) => {
     console.log(response);
 });
 ```
 
-**成功响应**:
-```javascript
-{
-    success: true,
-    data: {
-        roomId: "507f1f77bcf86cd799439011",
-        name: "测试房间",
-        maxPlayers: 8,
-        status: "waiting",
-        createdBy: "507f1f77bcf86cd799439012",
-        players: [
-            {
-                userId: "507f1f77bcf86cd799439012",
-                username: "player1",
-                ready: false,
-                isCreator: true
-            }
-        ],
-        isCreator: true
-    }
-}
-```
-
-**错误响应**:
-```javascript
-{
-    success: false,
-    error: "错误信息" // 可能的错误：
-    // - 房间名长度应在1-50个字符之间
-    // - 您已在其他房间中
-    // - 用户不存在
-}
-```
-
-**事件通知**:
-- roomListUpdated: 通知所有客户端房间列表已更新
-
-**注意事项**:
-1. 创建房间后会自动加入该房间
-2. 创建者默认为房主，无需准备
-3. 返回的房间信息包含完整的玩家列表和房间状态
-4. isCreator 字段标识当前用户是否为房主
+**预期结果**:
+- 房间创建成功
+- 返回房间ID
+- 房间列表更新事件被触发
 
 #### 2.4 加入房间
 ```javascript
@@ -946,3 +1008,148 @@ socket.on('connect_error', (error) => {});
    - 检查参数格式是否正确
    - 确认操作权限
    - 验证房间状态是否允许操作
+
+### 好友系统测试用例
+
+#### 1. 发送好友请求
+
+**发送请求**:
+```javascript
+socket.emit('sendFriendRequest', {
+    toUserId: 'valid_user_id',
+    message: '请求添加好友'
+}, (response) => {
+    console.log(response);
+});
+```
+
+**成功响应**:
+```javascript
+{
+    success: true,
+    data: {
+        requestId: "507f1f77bcf86cd799439011",
+        status: "pending",
+        requestSent: true,
+        message: "好友请求发送成功",
+        toUser: {
+            userId: "507f1f77bcf86cd799439012",
+            username: "player1"
+        }
+    }
+}
+```
+
+**错误响应**:
+```javascript
+{
+    success: false,
+    error: "错误信息", // 可能的错误：
+    // - 目标用户ID不能为空
+    // - 用户不存在
+    // - 该用户已经是您的好友
+    // - 已经发送过好友请求
+    requestSent: false
+}
+```
+
+#### 2. 处理好友请求
+
+**发送请求**:
+```javascript
+socket.emit('handleFriendRequest', {
+    requestId: 'valid_request_id',
+    action: 'accept' // 或 'reject'
+}, (response) => {
+    console.log(response);
+});
+```
+
+**成功响应**:
+```javascript
+{
+    success: true,
+    data: {
+        requestId: "507f1f77bcf86cd799439011",
+        status: "accepted", // 或 "rejected"
+        handled: true,
+        message: "好友请求接受成功", // 或 "好友请求拒绝成功"
+        fromUser: {
+            userId: "507f1f77bcf86cd799439012",
+            username: "player1"
+        }
+    }
+}
+```
+
+**错误响应**:
+```javascript
+{
+    success: false,
+    error: "错误信息", // 可能的错误：
+    // - 请求ID和处理动作不能为空
+    // - 好友请求不存在
+    // - 无权处理该请求
+    // - 该请求已被处理
+    // - 无效的操作
+    handled: false
+}
+```
+
+### 事件监听
+
+#### 1. 接收好友请求
+```javascript
+socket.on('friendRequestReceived', (data) => {
+    // data 格式:
+    // {
+    //     requestId: "507f1f77bcf86cd799439011",
+    //     fromUser: {
+    //         userId: "507f1f77bcf86cd799439012",
+    //         username: "player1"
+    //     },
+    //     message: "请求添加好友",
+    //     timestamp: "2024-01-20T12:00:00Z"
+    // }
+});
+```
+
+#### 2. 好友请求处理结果
+```javascript
+socket.on('friendRequestHandled', (data) => {
+    // data 格式:
+    // {
+    //     requestId: "507f1f77bcf86cd799439011",
+    //     status: "accepted", // 或 "rejected"
+    //     toUser: {
+    //         userId: "507f1f77bcf86cd799439013",
+    //         username: "player2"
+    //     },
+    //     timestamp: "2024-01-20T12:00:00Z"
+    // }
+});
+```
+
+### 注意事项
+
+1. 请求限制：
+   - 不能向自己发送好友请求
+   - 不能向已是好友的用户发送请求
+   - 不能重复发送请求
+   - 请求消息最大长度100字符
+
+2. 状态说明：
+   - requestSent: 标识请求是否已成功发送
+   - status: 请求的当前状态(pending/accepted/rejected)
+   - handled: 标识请求是否已被处理
+
+3. 错误处理：
+   - 所有错误响应都包含 success: false
+   - 错误响应包含具体的错误信息
+   - 请求发送失败时 requestSent 为 false
+   - 请求处理失败时 handled 为 false
+
+4. 实时通知：
+   - 发送请求后，目标用户会立即收到通知
+   - 处理请求后，发送者会立即收到结果通知
+   - 所有通知都包含时间戳

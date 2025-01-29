@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { io } from 'socket.io-client'
+import { useFriendStore } from '@/stores/friend'
 
 class WebSocketService {
   constructor() {
@@ -9,6 +10,34 @@ class WebSocketService {
     this.currentRoom = ref(null)
     this.connectPromise = null
     this.roomListCallbacks = new Set()
+    this.onConnectCallbacks = new Set()
+  }
+
+  // 修改连接回调的处理方法
+  onConnect(callback) {
+    if (typeof callback !== 'function') {
+      console.warn('onConnect 必须传入一个函数')
+      return
+    }
+
+    this.onConnectCallbacks.add(callback)
+    
+    // 如果已经连接，使用 nextTick 异步执行回调
+    if (this.socket?.connected) {
+      Promise.resolve().then(() => {
+        try {
+          callback()
+        } catch (error) {
+          console.error('执行连接回调失败:', error)
+        }
+      })
+    }
+  }
+
+  // 修改移除回调的方法
+  offConnect(callback) {
+    if (!callback) return
+    this.onConnectCallbacks.delete(callback)
   }
 
   connect(token) {
@@ -36,8 +65,28 @@ class WebSocketService {
       this.socket.on('connect', () => {
         console.log('✅ WebSocket 连接成功')
         this.connected.value = true
+        
+        // 设置好友事件监听
+        this.setupFriendEvents()
+        
         resolve()
         this.connectPromise = null
+        
+        // 使用 Promise.all 执行所有回调
+        Promise.all(
+          Array.from(this.onConnectCallbacks).map(callback => 
+            Promise.resolve().then(() => {
+              try {
+                return callback()
+              } catch (error) {
+                console.error('执行连接回调失败:', error)
+                return null
+              }
+            })
+          )
+        ).catch(error => {
+          console.error('执行连接回调时发生错误:', error)
+        })
         
         if (this.currentRoom.value) {
           console.log(`尝试重新加入房间: ${this.currentRoom.value}`)
@@ -104,14 +153,52 @@ class WebSocketService {
       })
 
       this.socket.on('readyStateChanged', (data) => {
-        const readyStatus = data.player.ready ? '准备' : '取消准备'
-        console.log('🎮 准备状态更新:', {
-          roomId: data.roomId,
-          player: data.player,
-          ready: data.player.ready,
-          allReady: data.allReady
-        })
-        ElMessage.info(`${data.player.username} ${readyStatus}`)
+        console.log('🎮 收到readyStateChanged事件:', data)
+        try {
+          if (!data) {
+            console.warn('⚠️ 收到空的准备状态数据')
+            return
+          }
+
+          // 如果有 changedPlayer 字段
+          if (data.changedPlayer) {
+            const readyStatus = data.changedPlayer.ready ? '准备' : '取消准备'
+            console.log('🎮 准备状态更新:', {
+              roomId: data.roomId,
+              player: data.changedPlayer,
+              ready: data.changedPlayer.ready,
+              allReady: data.allReady
+            })
+            ElMessage.info(`${data.changedPlayer.username} ${readyStatus}`)
+          }
+          // 如果有 player 字段
+          else if (data.player) {
+            const readyStatus = data.player.ready ? '准备' : '取消准备'
+            console.log('🎮 准备状态更新:', {
+              roomId: data.roomId,
+              player: data.player,
+              ready: data.player.ready,
+              allReady: data.allReady
+            })
+            ElMessage.info(`${data.player.username} ${readyStatus}`)
+          }
+          // 如果只有玩家列表
+          else if (data.players) {
+            console.log('🎮 房间玩家状态更新:', {
+              roomId: data.roomId,
+              players: data.players,
+              allReady: data.allReady
+            })
+          }
+          // 其他情况
+          else {
+            console.warn('⚠️ 未知的准备状态数据格式:', data)
+          }
+        } catch (error) {
+          console.error('❌ 处理准备状态变更事件失败:', error, {
+            data
+          })
+        }
       })
     })
 
@@ -236,10 +323,16 @@ class WebSocketService {
         return
       }
 
+      console.log('🎮 发送准备状态切换请求:', {
+        roomId: this.currentRoom.value
+      })
+
       this.socket.emit('toggleReady', { roomId: this.currentRoom.value }, (response) => {
+        console.log('✅ 准备状态切换响应:', response)
         if (response.success) {
           resolve(response.data)
         } else {
+          console.error('❌ 准备状态切换失败:', response.error)
           reject(new Error(response.error))
         }
       })
@@ -265,6 +358,262 @@ class WebSocketService {
   offRoomListUpdate(callback) {
     console.log('➖ 移除房间列表更新监听器')
     this.roomListCallbacks.delete(callback)
+  }
+
+  // 添加开始匹配方法
+  startMatch(roomId) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('🎮 发送开始匹配请求:', { roomId })
+      this.socket.emit('startMatch', { roomId }, (response) => {
+        console.log('✅ 开始匹配响应:', response)
+        if (response.error) {
+          reject(new Error(response.error))
+        } else {
+          resolve(response)
+        }
+      })
+    })
+  }
+
+  // 添加匹配成功事件监听
+  onMatchSuccess(callback) {
+    this.socket?.on('matchSuccess', (data) => {
+      console.log('🎯 匹配成功:', data)
+      callback(data)
+    })
+  }
+
+  // 添加匹配失败事件监听
+  onMatchFailed(callback) {
+    this.socket?.on('matchFailed', (data) => {
+      console.log('❌ 匹配失败:', data)
+      callback(data)
+    })
+  }
+
+  // 添加匹配取消事件监听
+  onMatchCanceled(callback) {
+    this.socket?.on('matchCanceled', (data) => {
+      console.log('⚠️ 匹配取消:', data)
+      callback(data)
+    })
+  }
+
+  // 移除匹配相关的事件监听
+  offMatchEvents() {
+    if (this.socket) {
+      this.socket.off('matchSuccess')
+      this.socket.off('matchFailed')
+      this.socket.off('matchCanceled')
+    }
+  }
+
+  // 添加好友相关方法
+  getFriends() {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        console.warn('⚠️ WebSocket未连接，无法获取好友列表')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('👥 正在获取好友列表...')
+      this.socket.emit('getFriends', (response) => {
+        if (response.success) {
+          console.log('✅ 获取好友列表成功:', response.data)
+          resolve(response)
+        } else {
+          console.error('❌ 获取好友列表失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  sendFriendRequest({ toUserId, message }) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        console.error('❌ WebSocket 实例不存在');
+        reject(new Error('WebSocket 未初始化'));
+        return;
+      }
+
+      if (!this.socket.connected) {
+        console.error('❌ WebSocket 未连接');
+        reject(new Error('WebSocket 未连接'));
+        return;
+      }
+
+      if (!toUserId?.trim()) {
+        console.error('❌ 目标用户ID为空');
+        reject(new Error('目标用户ID不能为空'));
+        return;
+      }
+
+      console.log('📨 发送好友请求:', { 
+        toUserId: toUserId.trim(), 
+        message: message?.trim() || '请求添加您为好友',
+        socketId: this.socket.id,
+        connected: this.socket.connected
+      });
+
+      this.socket.emit('sendFriendRequest', {
+        toUserId: toUserId.trim(),
+        message: message?.trim() || '请求添加您为好友'
+      }, (response) => {
+        console.log('✅ 好友请求响应:', response);
+        if (response.success) {
+          resolve(response);
+        } else {
+          console.error('❌ 好友请求失败:', response.error);
+          reject(new Error(response.error));
+        }
+      });
+    });
+  }
+
+  handleFriendRequest({ requestId, action }) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      this.socket.emit('handleFriendRequest', {
+        requestId,
+        action
+      }, (response) => {
+        if (response.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  removeFriend({ friendId }) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        console.warn('⚠️ WebSocket未连接，无法删除好友')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('🗑️ 删除好友:', { friendId })
+      this.socket.emit('removeFriend', { friendId }, (response) => {
+        if (response.success) {
+          console.log('✅ 删除好友成功:', response.data)
+          resolve(response)
+        } else {
+          console.error('❌ 删除好友失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 添加好友相关事件监听
+  setupFriendEvents() {
+    if (!this.socket) {
+        console.error('❌ WebSocket 实例不存在，无法设置好友事件');
+        return;
+    }
+
+    // 移除可能存在的旧监听器
+    this.socket.off('friendRequestReceived');
+    this.socket.off('friendRequestHandled');
+    this.socket.off('friendRemoved');
+    this.socket.off('friendStatusChanged');
+
+    // 接收好友请求
+    this.socket.on('friendRequestReceived', (data) => {
+        console.log('📨 收到好友请求:', {
+            ...data,
+            socketId: this.socket.id,
+            timestamp: new Date().toISOString()
+        });
+        
+        const store = useFriendStore();
+        store.getFriendRequests();
+        
+        // 使用更醒目的通知
+        ElMessage({
+            message: `收到来自 ${data.fromUser.username} 的好友请求`,
+            type: 'info',
+            duration: 5000,
+            showClose: true
+        });
+    });
+
+    // 好友请求处理结果
+    this.socket.on('friendRequestHandled', async (data) => {
+      console.log('✅ 好友请求处理结果:', data)
+      const store = useFriendStore()
+      
+      // 刷新好友列表
+      await store.getFriends()
+      
+      const action = data.status === 'accepted' ? '接受' : '拒绝'
+      ElMessage.success(`${data.toUser.username} ${action}了您的好友请求`)
+    })
+
+    // 被好友删除
+    this.socket.on('friendRemoved', (data) => {
+      console.log('❌ 被好友删除:', {
+        userId: data.userId,
+        username: data.username,
+        timestamp: new Date().toISOString()
+      })
+      const store = useFriendStore()
+      store.getFriends()
+      ElMessage.warning(`${data.username} 将您从好友列表中移除`)
+    })
+
+    // 好友状态变更
+    this.socket.on('friendStatusChanged', async (data) => {
+        console.log('👤 好友状态变更:', data);
+        const store = useFriendStore();
+        
+        // 使用 store 的方法更新状态
+        store.updateFriendStatus(data.userId, data.status);
+        
+        // 触发状态变更通知
+        ElMessage({
+            message: `${data.username} ${data.status === 'online' ? '上线了' : '离线了'}`,
+            type: data.status === 'online' ? 'success' : 'info',
+            duration: 3000
+        });
+    });
+
+    console.log('✅ 好友事件监听器设置完成');
+  }
+
+  // 添加获取好友请求的方法
+  getFriendRequests() {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        console.warn('⚠️ WebSocket未连接，无法获取好友请求列表')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('📋 正在获取好友请求列表...')
+      this.socket.emit('getFriendRequests', (response) => {
+        if (response.success) {
+          console.log('✅ 获取好友请求列表成功:', response.data)
+          resolve(response)
+        } else {
+          console.error('❌ 获取好友请求列表失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
   }
 }
 

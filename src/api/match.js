@@ -67,5 +67,27 @@ export const matchApi = {
   // 获取房间详情 (通过 joinRoom 获取)
   getRoomDetail(roomId) {
     return this.joinRoom(roomId)
+  },
+
+  // 开始游戏
+  startGame(roomId) {
+    return wsService.startGame(roomId)
+      .then(data => ({
+        data: { code: 200, data }
+      }))
+      .catch(error => {
+        throw new Error(error.message)
+      })
+  },
+
+  // 修改开始匹配方法，添加房间ID参数
+  startMatch(roomId) {
+    return wsService.startMatch(roomId)
+      .then(data => ({
+        data: { code: 200, data }
+      }))
+      .catch(error => {
+        throw new Error(error.message)
+      })
   }
 } 

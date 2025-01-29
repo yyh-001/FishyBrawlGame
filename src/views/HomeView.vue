@@ -28,33 +28,54 @@
             </div>
 
             <!-- 右侧用户区域 -->
-            <div class="flex items-center space-x-8">
-              <!-- 主题切换按钮 -->
-              <button 
-                class="text-white/80 hover:text-white transition-colors p-2"
-                @click="themeStore.toggleTheme"
-              >
-                <el-icon class="text-2xl">
-                  <component :is="themeStore.theme === 'light' ? 'Moon' : 'Sunny'" />
-                </el-icon>
-              </button>
-
-              <!-- 用户信息 -->
-              <div class="flex items-center space-x-4">
-                <span class="text-lg text-white">{{ username }}</span>
-                <el-dropdown trigger="click">
-                  <div class="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center cursor-pointer hover:bg-white/30 transition-colors mr-4">
-                    <span class="text-white text-lg font-medium">{{ userInitial }}</span>
+            <div class="flex items-center space-x-4">
+              <!-- Steam 风格的用户信息下拉菜单 -->
+              <el-dropdown trigger="click" class="steam-dropdown">
+                <div class="steam-user-info">
+                  <div class="steam-avatar">
+                    <div class="steam-avatar-inner">
+                      {{ userInitial }}
+                    </div>
                   </div>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item @click="handleLogout">
-                        退出登录
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
+                  <div class="steam-user-details">
+                    <div class="steam-username">{{ username }}</div>
+                    <div class="steam-level">
+                      <span class="level-tag">Lv.{{ userLevel }}</span>
+                      <span class="rating">Rating: {{ userRating }}</span>
+                    </div>
+                  </div>
+                  <el-icon class="text-white/60 ml-2"><ArrowDown /></el-icon>
+                </div>
+
+                <template #dropdown>
+                  <el-dropdown-menu class="steam-dropdown-menu">
+                    <el-dropdown-item class="steam-dropdown-item">
+                      <div class="flex items-center space-x-2">
+                        <el-icon><User /></el-icon>
+                        <span>个人资料</span>
+                      </div>
+                    </el-dropdown-item>
+                    <el-dropdown-item class="steam-dropdown-item">
+                      <div class="flex items-center space-x-2">
+                        <el-icon><Trophy /></el-icon>
+                        <span>对战记录</span>
+                      </div>
+                    </el-dropdown-item>
+                    <el-dropdown-item class="steam-dropdown-item">
+                      <div class="flex items-center space-x-2">
+                        <el-icon><Setting /></el-icon>
+                        <span>设置</span>
+                      </div>
+                    </el-dropdown-item>
+                    <el-dropdown-item divided class="steam-dropdown-item" @click="handleLogout">
+                      <div class="flex items-center space-x-2 text-red-400">
+                        <el-icon><SwitchButton /></el-icon>
+                        <span>退出登录</span>
+                      </div>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
         </div>
@@ -95,14 +116,17 @@
         <div class="flex-grow flex items-center justify-center mt-8 mb-16">
           <button 
             class="transform hover:scale-110 transition-all duration-300 bg-blue-600 hover:bg-blue-700 text-white px-16 py-4 rounded-xl font-medium text-xl shadow-lg hover:shadow-2xl"
-            @click="showMatchmaking = true"
+            @click="handleStartMatch"
           >
             开始匹配
           </button>
         </div>
 
         <!-- 匹配对战弹窗 -->
-        <matchmaking-modal v-model:visible="showMatchmaking" />
+        <matchmaking-modal 
+          v-model:visible="showMatchmaking"
+          :room-id="currentRoomId"
+        />
 
         <!-- 添加房间列表 -->
         <div class="mt-8">
@@ -110,37 +134,338 @@
         </div>
       </main>
     </div>
+
+    <!-- Steam 风格的社交面板 -->
+    <div 
+      class="fixed right-4 bottom-4 z-50 flex flex-col items-end"
+      v-click-outside="closeSocialPanel"
+    >
+      <!-- 社交按钮 -->
+      <button
+        class="steam-social-btn mb-2 group"
+        :class="{ 'active': showSocialPanel }"
+        @click="showSocialPanel = !showSocialPanel"
+      >
+        <el-badge 
+          :value="friendRequests.length" 
+          :hidden="!friendRequests.length"
+          :max="99"
+          class="mr-2"
+        >
+          <el-icon class="text-xl">
+            <UserFilled />
+          </el-icon>
+        </el-badge>
+        <span class="ml-2">好友</span>
+      </button>
+
+      <!-- Steam 风格的社交面板 -->
+      <div 
+        v-show="showSocialPanel"
+        class="steam-panel"
+      >
+        <!-- 状态选择器 -->
+        <div class="steam-panel-header">
+          <div class="flex items-center">
+            <div class="w-8 h-8 rounded bg-white/10 flex items-center justify-center mr-2">
+              {{ userInitial }}
+            </div>
+            <div class="flex-1">
+              <div class="text-sm font-medium">{{ username }}</div>
+              <div class="steam-user-id" @click="copyUserId">
+                <span class="text-xs text-gray-400">UID: {{ userId }}</span>
+                <el-icon class="copy-icon ml-1 text-gray-400">
+                  <CopyDocument />
+                </el-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 好友列表 -->
+        <div class="steam-panel-content">
+          <div class="friend-category">
+            <friend-list />
+          </div>
+
+          <div v-if="friendRequests.length > 0" class="friend-category">
+            <div class="friend-category-header">
+              好友请求 ({{ friendRequests.length }})
+            </div>
+            <friend-requests />
+          </div>
+        </div>
+
+        <!-- 底部操作栏 -->
+        <div class="steam-panel-footer">
+          <el-button 
+            type="primary" 
+            size="small"
+            @click="showAddFriendDialog = true"
+          >
+            添加好友
+          </el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加好友弹窗 -->
+    <el-dialog
+      v-model="showAddFriendDialog"
+      title="添加好友"
+      :width="isMobile ? '90%' : '400px'"
+      class="add-friend-dialog"
+    >
+      <el-form 
+        ref="formRef"
+        :model="friendForm"
+        :rules="rules"
+        label-width="80px"
+      >
+        <el-form-item label="用户ID" prop="userId">
+          <el-input 
+            v-model="friendForm.userId" 
+            placeholder="请输入要添加的用户ID"
+          />
+        </el-form-item>
+        <el-form-item label="留言" prop="message">
+          <el-input 
+            v-model="friendForm.message" 
+            type="textarea"
+            placeholder="请输入留言"
+            maxlength="100"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <el-button @click="showAddFriendDialog = false">
+            取消
+          </el-button>
+          <el-button 
+            type="primary"
+            @click="handleAddFriend"
+            :loading="loading"
+          >
+            发送请求
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useThemeStore } from '@/stores/theme'
+import { useFriendStore } from '@/stores/friend'
 import { ElMessage } from 'element-plus'
-import { Moon, Sunny } from '@element-plus/icons-vue'
+import { UserFilled, ArrowDown, User, Trophy, Setting, SwitchButton, CopyDocument } from '@element-plus/icons-vue'
 import MatchmakingModal from '@/components/game/MatchmakingModal.vue'
 import RoomList from '@/components/game/RoomList.vue'
+import FriendList from '@/components/friend/FriendList.vue'
+import FriendRequests from '@/components/friend/FriendRequests.vue'
+import { useResponsive } from '@/composables/useResponsive'
+import { wsService } from '@/services/websocket'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const themeStore = useThemeStore()
+const friendStore = useFriendStore()
 
 // 用户相关的计算属性
-const username = computed(() => authStore.user?.username || '玩家')
-const userInitial = computed(() => username.value[0]?.toUpperCase() || 'U')
-const userRating = computed(() => authStore.user?.rating || 1000)
+const username = computed(() => {
+  const user = authStore.user
+  return user ? user.username : '玩家'
+})
+
+const userInitial = computed(() => {
+  const name = username.value
+  return name ? name[0]?.toUpperCase() : 'U'
+})
+
+const userRating = computed(() => {
+  const user = authStore.user
+  return user ? user.rating : 1000
+})
 
 const showMatchmaking = ref(false)
+const currentRoomId = ref('')
 
 // 计算统计数据
-const stats = computed(() => ({
-  totalGames: 0,
-  winRate: 0,
-  highestRating: userRating.value
-}))
+const stats = computed(() => {
+  const user = authStore.user
+  return {
+    totalGames: user?.totalGames || 0,
+    winRate: user?.winRate || 0,
+    highestRating: user?.highestRating || userRating.value
+  }
+})
 
+// 添加社交相关的状态
+const showSocialPanel = ref(false)
+const showAddFriendDialog = ref(false)
+const loading = ref(false)
+const formRef = ref(null)
+
+// 关闭社交面板
+const closeSocialPanel = () => {
+  showSocialPanel.value = false
+}
+
+const friendForm = ref({
+  userId: '',
+  message: '你好，我想添加你为好友'
+})
+
+// 从 store 获取好友请求列表
+const friendRequests = computed(() => friendStore.friendRequests)
+
+// 计算在线和离线好友
+const onlineFriends = computed(() => 
+  friendStore.friends.filter(f => f.status === 'online' || f.status === 'in_game')
+)
+const offlineFriends = computed(() => 
+  friendStore.friends.filter(f => f.status === 'offline')
+)
+
+// 添加用户等级计算
+const userLevel = computed(() => {
+  const rating = userRating.value
+  return Math.floor((rating - 1000) / 100) + 1
+})
+
+// 添加用户ID计算属性
+const userId = computed(() => {
+  const user = authStore.user
+  return user ? user.userId : ''
+})
+
+// 添加复制用户ID的功能
+const copyUserId = async () => {
+  try {
+    await navigator.clipboard.writeText(userId.value)
+    ElMessage.success('用户ID已复制到剪贴板')
+  } catch (err) {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+// 当社交面板显示时获取数据
+watch(showSocialPanel, async (newVal) => {
+  if (newVal) {
+    try {
+      // 等待 WebSocket 连接
+      if (!wsService.connected.value) {
+        console.log('等待 WebSocket 连接...')
+        let retryCount = 0
+        const maxRetries = 10
+
+        while (!wsService.connected.value && retryCount < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          retryCount++
+          console.log(`尝试第 ${retryCount} 次连接...`)
+        }
+
+        if (!wsService.connected.value) {
+          throw new Error('WebSocket 连接超时')
+          return
+        }
+      }
+
+      console.log('社交面板打开，开始获取好友数据...')
+      await Promise.all([
+        friendStore.getFriends(),
+        friendStore.getFriendRequests()
+      ])
+      console.log('好友数据获取完成')
+    } catch (error) {
+      console.error('获取好友数据失败:', error)
+      ElMessage.error('获取好友数据失败，请重试')
+    }
+  }
+})
+
+// 关闭社交面板时清空数据
+watch(showSocialPanel, (newVal) => {
+  if (!newVal) {
+    // 清空好友列表和请求列表
+    friendStore.$reset()
+  }
+})
+
+const { isMobile } = useResponsive()
+
+// 处理开始匹配
+const handleStartMatch = () => {
+  currentRoomId.value = ''
+  showMatchmaking.value = true
+}
+
+// 监听匹配状态
+watch(showMatchmaking, (newVal) => {
+  if (!newVal) {
+    currentRoomId.value = ''
+  }
+})
+
+const rules = {
+  userId: [
+    { required: true, message: '请输入用户ID', trigger: 'blur' }
+  ],
+  message: [
+    { required: true, message: '请输入留言', trigger: 'blur' },
+    { max: 100, message: '留言长度不能超过100个字符', trigger: 'blur' }
+  ]
+}
+
+// 处理添加好友
+const handleAddFriend = async () => {
+  if (!formRef.value) return
+  
+  try {
+    await formRef.value.validate()
+    loading.value = true
+    
+    const response = await friendStore.sendFriendRequest({
+      toUserId: friendForm.value.userId.trim(),
+      message: friendForm.value.message
+    })
+    
+    if (response.success && response.data.requestSent) {
+      showAddFriendDialog.value = false
+      // 重置表单
+      friendForm.value = {
+        userId: '',
+        message: '你好，我想添加你为好友'
+      }
+    }
+  } catch (error) {
+    console.error('添加好友失败:', error)
+    if (['已经是您的好友', '已经发送过好友请求'].some(msg => error.message.includes(msg))) {
+      ElMessage.warning(error.message)
+    } else {
+      ElMessage.error(error.message || '发送好友请求失败')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+// 验证用户ID
+const validateUserId = (rule, value, callback) => {
+  const currentUserId = authStore.user?.userId
+  if (!value?.trim()) {
+    callback(new Error('请输入用户ID'))
+  } else if (value.trim() === currentUserId) {
+    callback(new Error('不能向自己发送好友请求'))
+  } else {
+    callback()
+  }
+}
+
+// 处理登出
 const handleLogout = () => {
   authStore.logout()
   ElMessage.success('已退出登录')
@@ -218,5 +543,167 @@ button:hover {
 /* 确保内容区域的背景模糊效果 */
 .bg-white\/10 {
   backdrop-filter: blur(8px);
+}
+
+/* Steam 风格的社交按钮 */
+.steam-social-btn {
+  @apply flex items-center px-4 py-2 rounded bg-gray-800/90 text-white/90 
+         hover:bg-gray-700/90 transition-colors relative;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.steam-social-btn.active {
+  @apply bg-gray-700/90;
+}
+
+/* Steam 风格的面板 */
+.steam-panel {
+  @apply absolute bottom-12 right-0 w-80 bg-gray-900/95 rounded-lg overflow-hidden
+         border border-gray-700/50 shadow-xl;
+  backdrop-filter: blur(12px);
+}
+
+.steam-panel-header {
+  @apply p-3 border-b border-gray-700/50 bg-gray-800/50;
+}
+
+.steam-panel-content {
+  @apply p-2 max-h-[400px] overflow-y-auto;
+}
+
+.steam-panel-footer {
+  @apply p-3 border-t border-gray-700/50 bg-gray-800/50;
+}
+
+/* 好友分类 */
+.friend-category {
+  @apply mb-4 last:mb-0;
+}
+
+.friend-category-header {
+  @apply text-xs text-gray-400 px-2 py-1 bg-gray-800/50 rounded mb-1;
+}
+
+/* 滚动条样式 */
+.steam-panel-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
+
+.steam-panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.steam-panel-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.steam-panel-content::-webkit-scrollbar-thumb {
+  @apply bg-white/20 rounded;
+}
+
+/* 移动端样式优化 */
+@media (max-width: 768px) {
+  .add-friend-dialog :deep(.el-dialog) {
+    margin: 20vh auto !important;
+  }
+
+  .add-friend-dialog :deep(.el-dialog__body) {
+    padding: 1rem !important;
+  }
+}
+
+/* Steam 风格的用户信息 */
+.steam-user-info {
+  @apply flex items-center px-3 py-2 rounded bg-gray-800/90 
+         hover:bg-gray-700/90 transition-colors cursor-pointer;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.steam-avatar {
+  @apply relative mr-3;
+}
+
+.steam-avatar-inner {
+  @apply w-10 h-10 rounded bg-gray-700/90 flex items-center justify-center
+         text-lg font-medium text-white border-2 border-gray-600/50;
+}
+
+.steam-user-details {
+  @apply flex flex-col min-w-[120px];
+}
+
+.steam-username {
+  @apply text-white font-medium text-sm;
+}
+
+.steam-level {
+  @apply flex items-center space-x-2 text-xs;
+}
+
+.level-tag {
+  @apply px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400;
+}
+
+.rating {
+  @apply text-gray-400;
+}
+
+/* Steam 风格的下拉菜单 */
+.steam-dropdown-menu {
+  @apply !bg-gray-800/95 !border-gray-700/50;
+  backdrop-filter: blur(12px);
+  min-width: 200px;
+}
+
+.steam-dropdown-item {
+  @apply text-white/90 hover:!bg-gray-700/90;
+  line-height: 2;
+}
+
+:deep(.el-dropdown-menu__item.is-disabled) {
+  @apply text-white/30;
+}
+
+:deep(.el-dropdown-menu__item--divided) {
+  @apply border-gray-700/50;
+}
+
+:deep(.el-dropdown-menu__item--divided::before) {
+  @apply bg-gray-800/95;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .steam-user-info {
+    @apply px-2 py-1;
+  }
+
+  .steam-avatar-inner {
+    @apply w-8 h-8 text-base;
+  }
+
+  .steam-username {
+    @apply text-xs;
+  }
+
+  .steam-level {
+    @apply text-[10px];
+  }
+}
+
+/* 添加 UID 样式 */
+.steam-user-id {
+  @apply flex items-center cursor-pointer hover:text-white/90 transition-colors;
+}
+
+.steam-user-id:hover .copy-icon {
+  @apply text-white/90;
+}
+
+.copy-icon {
+  @apply text-xs transition-colors;
 }
 </style> 

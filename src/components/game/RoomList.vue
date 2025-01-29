@@ -79,8 +79,9 @@
     <el-dialog
       v-model="showCreateRoom"
       title="创建房间"
-      width="400px"
+      :width="isMobile ? '90%' : '400px'"
       :close-on-click-modal="false"
+      class="create-room-dialog"
     >
       <el-form 
         ref="formRef"
@@ -131,7 +132,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading, Refresh, Plus, ArrowRight, Box } from '@element-plus/icons-vue'
 import { useMatchStore } from '@/stores/match'
@@ -296,6 +297,9 @@ onUnmounted(() => {
   }
   wsService.offRoomListUpdate(fetchRooms)
 })
+
+// 添加移动端检测
+const isMobile = computed(() => window.innerWidth <= 768)
 </script>
 
 <style scoped>
@@ -330,5 +334,25 @@ onUnmounted(() => {
 
 :deep(.el-select-dropdown) {
   @apply bg-white/90 backdrop-blur-lg;
+}
+
+/* 移动端样式优化 */
+@media (max-width: 768px) {
+  .create-room-dialog :deep(.el-dialog) {
+    margin: 20vh auto !important;
+  }
+
+  .create-room-dialog :deep(.el-dialog__body) {
+    padding: 1rem !important;
+  }
+
+  /* 调整按钮组在移动端的布局 */
+  .flex.justify-end.gap-2 {
+    @apply flex-col;
+  }
+
+  .flex.justify-end.gap-2 button {
+    @apply w-full mb-2 last:mb-0;
+  }
 }
 </style> 
