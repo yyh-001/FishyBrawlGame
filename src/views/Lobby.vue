@@ -10,6 +10,18 @@
       class="fixed right-6 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2"
       :class="{ 'bottom-6 right-6 translate-y-0': isMobile }"
     >
+      <!-- 组队按钮 -->
+      <el-button
+        type="success"
+        class="social-btn !w-12 !h-12 !rounded-full flex items-center justify-center"
+        @click="handleCreateRoom"
+      >
+        <el-icon class="text-xl">
+          <Plus />
+        </el-icon>
+      </el-button>
+
+      <!-- 好友按钮 -->
       <el-button
         type="primary"
         class="social-btn !w-12 !h-12 !rounded-full flex items-center justify-center"
@@ -107,13 +119,14 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UserFilled } from '@element-plus/icons-vue'
+import { UserFilled, Plus } from '@element-plus/icons-vue'
 import RoomList from '@/components/game/RoomList.vue'
 import FriendList from '@/components/friend/FriendList.vue'
 import FriendRequests from '@/components/friend/FriendRequests.vue'
 import { useFriendStore } from '@/stores/friend'
 import { useAuthStore } from '@/stores/auth'
 import { wsService } from '@/services/websocket'
+import { useRouter } from 'vue-router'
 
 const friendStore = useFriendStore()
 const authStore = useAuthStore()
@@ -121,6 +134,7 @@ const loading = ref(false)
 const showAddFriendDialog = ref(false)
 const showSocialDrawer = ref(false)
 const formRef = ref(null)
+const router = useRouter()
 
 const friendForm = ref({
   userId: '',
@@ -222,6 +236,11 @@ onUnmounted(() => {
   console.log('移除 WebSocket 连接回调')
   wsService.offConnect(initFriendData)
 })
+
+// 处理创建房间
+const handleCreateRoom = () => {
+  router.push('/create-room')
+}
 </script>
 
 <style scoped>

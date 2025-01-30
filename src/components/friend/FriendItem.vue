@@ -22,14 +22,6 @@
       >
         {{ getStatusText(friend.status) }}
       </el-tag>
-      <el-button 
-        type="primary"
-        size="small"
-        @click.stop="$emit('remove', friend)"
-        v-if="friend.status === 'online'"
-      >
-        邀请对战
-      </el-button>
     </div>
   </div>
 </template>

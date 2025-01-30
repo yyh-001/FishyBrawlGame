@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { matchApi } from '@/api/match'
+import { wsService } from '@/services/websocket'
 
 export const useMatchStore = defineStore('match', () => {
   const loading = ref(false)
 
   const matchingModalVisible = ref(false)
+  const currentRoomId = ref('')
   
   const setMatchingModalVisible = (visible) => {
     matchingModalVisible.value = visible
@@ -81,32 +83,48 @@ export const useMatchStore = defineStore('match', () => {
     }
   }
 
-  // 离开房间
-  const leaveRoom = async (roomId) => {
-    try {
-      const response = await matchApi.leaveRoom(roomId)
-      if (response?.data?.code === 200) {
-        return response.data
+  // 获取房间详情
+  const getRoomDetail = (roomId) => {
+    return new Promise((resolve, reject) => {
+      if (!wsService.socket?.connected) {
+        console.error('WebSocket 未连接')
+        reject(new Error('WebSocket 未连接'))
+        return
       }
-      throw new Error(response?.data?.message || '离开房间失败')
-    } catch (error) {
-      console.error('Leave room failed:', error)
-      throw error
-    }
+
+      console.log('正在获取房间详情:', roomId)
+      wsService.socket.emit('getCurrentRoom', (response) => {
+        console.log('获取房间详情响应:', response)
+        if (response.success) {
+          console.log('获取房间详情成功:', response.data)
+          resolve({
+            code: 200,
+            data: response.data
+          })
+        } else {
+          console.error('获取房间详情失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
   }
 
   // 准备
-  const ready = async (roomId) => {
-    try {
-      const response = await matchApi.ready(roomId)
-      if (response?.data?.code === 200) {
-        return response.data
+  const ready = (roomId) => {
+    return new Promise((resolve, reject) => {
+      if (!wsService.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
       }
-      throw new Error(response?.data?.message || '准备失败')
-    } catch (error) {
-      console.error('Ready failed:', error)
-      throw error
-    }
+
+      wsService.socket.emit('ready', { roomId }, (response) => {
+        if (response.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response.error))
+        }
+      })
+    })
   }
 
   // 取消准备
@@ -151,6 +169,24 @@ export const useMatchStore = defineStore('match', () => {
     }
   }
 
+  // 离开房间
+  const leaveRoom = () => {
+    return new Promise((resolve, reject) => {
+      if (!wsService.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      wsService.socket.emit('leaveRoom', {}, (response) => {
+        if (response.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
   return {
     loading,
     getRooms,
@@ -164,6 +200,8 @@ export const useMatchStore = defineStore('match', () => {
     startGame,
     matchingModalVisible,
     setMatchingModalVisible,
-    startMatch
+    startMatch,
+    currentRoomId,
+    getRoomDetail
   }
 }) 

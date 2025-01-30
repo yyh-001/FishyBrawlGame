@@ -127,11 +127,6 @@
           v-model:visible="showMatchmaking"
           :room-id="currentRoomId"
         />
-
-        <!-- 添加房间列表 -->
-        <div class="mt-8">
-          <room-list />
-        </div>
       </main>
     </div>
 
@@ -140,6 +135,17 @@
       class="fixed right-4 bottom-4 z-50 flex flex-col items-end"
       v-click-outside="closeSocialPanel"
     >
+      <!-- 组队按钮 -->
+      <button
+        class="steam-social-btn mb-2 group"
+        @click="handleCreateRoom"
+      >
+        <el-icon class="text-xl">
+          <Plus />
+        </el-icon>
+        <span class="ml-2">组队</span>
+      </button>
+
       <!-- 社交按钮 -->
       <button
         class="steam-social-btn mb-2 group"
@@ -171,10 +177,10 @@
               {{ userInitial }}
             </div>
             <div class="flex-1">
-              <div class="text-sm font-medium">{{ username }}</div>
+              <div class="text-sm font-medium text-white">{{ username }}</div>
               <div class="steam-user-id" @click="copyUserId">
-                <span class="text-xs text-gray-400">UID: {{ userId }}</span>
-                <el-icon class="copy-icon ml-1 text-gray-400">
+                <span class="text-xs text-white/80">UID: {{ userId }}</span>
+                <el-icon class="text-white/60 text-xs copy-icon hover:text-white/90">
                   <CopyDocument />
                 </el-icon>
               </div>
@@ -261,18 +267,21 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useFriendStore } from '@/stores/friend'
-import { ElMessage } from 'element-plus'
-import { UserFilled, ArrowDown, User, Trophy, Setting, SwitchButton, CopyDocument } from '@element-plus/icons-vue'
+import { useWebSocketService } from '@/services/websocket'
+import { useMatchStore } from '@/stores/match'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { UserFilled, ArrowDown, User, Trophy, Setting, SwitchButton, CopyDocument, Plus } from '@element-plus/icons-vue'
 import MatchmakingModal from '@/components/game/MatchmakingModal.vue'
-import RoomList from '@/components/game/RoomList.vue'
 import FriendList from '@/components/friend/FriendList.vue'
 import FriendRequests from '@/components/friend/FriendRequests.vue'
 import { useResponsive } from '@/composables/useResponsive'
-import { wsService } from '@/services/websocket'
 
 const router = useRouter()
+const wsService = useWebSocketService()
 const authStore = useAuthStore()
 const friendStore = useFriendStore()
+const matchStore = useMatchStore()
+const currentRoomId = ref('')
 
 // 用户相关的计算属性
 const username = computed(() => {
@@ -291,7 +300,6 @@ const userRating = computed(() => {
 })
 
 const showMatchmaking = ref(false)
-const currentRoomId = ref('')
 
 // 计算统计数据
 const stats = computed(() => {
@@ -309,15 +317,8 @@ const showAddFriendDialog = ref(false)
 const loading = ref(false)
 const formRef = ref(null)
 
-// 关闭社交面板
-const closeSocialPanel = () => {
-  showSocialPanel.value = false
-}
-
-const friendForm = ref({
-  userId: '',
-  message: '你好，我想添加你为好友'
-})
+// 用于防止重复处理邀请
+const processingInvites = ref(new Set())
 
 // 从 store 获取好友请求列表
 const friendRequests = computed(() => friendStore.friendRequests)
@@ -342,13 +343,26 @@ const userId = computed(() => {
   return user ? user.userId : ''
 })
 
-// 添加复制用户ID的功能
+// 添加复制 UID 方法
 const copyUserId = async () => {
   try {
     await navigator.clipboard.writeText(userId.value)
     ElMessage.success('用户ID已复制到剪贴板')
-  } catch (err) {
-    ElMessage.error('复制失败，请手动复制')
+  } catch (error) {
+    console.error('复制失败:', error)
+    // 使用备用方法
+    const textarea = document.createElement('textarea')
+    textarea.value = userId.value
+    document.body.appendChild(textarea)
+    textarea.select()
+    try {
+      document.execCommand('copy')
+      ElMessage.success('用户ID已复制到剪贴板')
+    } catch (err) {
+      ElMessage.error('复制失败，请手动复制')
+    } finally {
+      document.body.removeChild(textarea)
+    }
   }
 }
 
@@ -471,6 +485,154 @@ const handleLogout = () => {
   ElMessage.success('已退出登录')
   router.push('/login')
 }
+
+// 处理创建房间
+const handleCreateRoom = async () => {
+  try {
+    const response = await wsService.createQuickRoom()
+    console.log('创建房间成功:', response)
+    
+    // 确保房间数据格式正确
+    const roomData = {
+      _id: response.roomId,
+      roomId: response.roomId,
+      name: response.name,
+      players: response.players || [],
+      maxPlayers: response.maxPlayers,
+      status: response.status,
+      createdBy: response.createdBy,
+      createdAt: response.createdAt,
+      updatedAt: response.updatedAt
+    }
+
+    console.log('准备跳转到房间:', roomData)
+
+    // 直接跳转到房间页面，并传递房间数据
+    router.push({
+      name: 'RoomDetail',
+      params: {
+        roomId: response.roomId,
+      },
+      query: {
+        roomData: encodeURIComponent(JSON.stringify(roomData))
+      }
+    })
+  } catch (error) {
+    console.error('创建房间失败:', error)
+    ElMessage.error(error.message || '创建房间失败')
+  }
+}
+
+// 设置 WebSocket 事件监听
+const setupWebSocketEvents = () => {
+  // 先清理可能存在的旧监听器
+  cleanupWebSocketEvents()
+
+  // 如果已连接，直接设置事件监听
+  if (wsService.socket?.connected) {
+    setupEvents()
+  }
+
+  // 监听连接成功事件
+  wsService.onConnect(() => {
+    console.log('WebSocket 连接成功，设置事件监听')
+    setupEvents()
+  })
+}
+
+// 实际设置事件的函数
+const setupEvents = () => {
+  console.log('设置大厅页面 WebSocket 事件监听')
+
+  // 监听房间邀请
+  wsService.socket.on('roomInvitation', handleRoomInvitation)
+}
+
+// 处理房间邀请
+const handleRoomInvitation = (data) => {
+  console.log('收到房间邀请:', data)
+  
+  // 检查是否正在处理该邀请
+  if (processingInvites.value.has(data.roomId)) {
+    console.log('该邀请正在处理中，忽略重复邀请:', data.roomId)
+    return
+  }
+  
+  // 标记该邀请正在处理
+  processingInvites.value.add(data.roomId)
+
+  ElMessageBox.confirm(
+    `${data.inviter.username} 邀请您加入房间 "${data.roomName}"`,
+    '房间邀请',
+    {
+      confirmButtonText: '接受',
+      cancelButtonText: '拒绝',
+      type: 'info',
+      showClose: false,
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+      callback: async (action) => {
+        try {
+          const accept = action === 'confirm'
+          const response = await wsService.handleRoomInvitation({
+            roomId: data.roomId,
+            accept
+          })
+          
+          if (accept && response.success) {
+            console.log('准备跳转到房间:', {
+              roomId: data.roomId,
+              roomData: data.roomData
+            })
+
+            // 如果接受邀请，跳转到房间
+            router.push({
+              name: 'RoomDetail',
+              params: { roomId: data.roomId },
+              query: { 
+                roomData: encodeURIComponent(JSON.stringify(data.roomData))
+              }
+            })
+          }
+        } catch (error) {
+          console.error('处理房间邀请失败:', {
+            error,
+            data,
+            routerError: error.message.includes('No match for') ? '路由匹配失败' : '其他错误'
+          })
+          ElMessage.error(error.message || '处理邀请失败')
+        } finally {
+          // 处理完成后移除标记
+          processingInvites.value.delete(data.roomId)
+        }
+      }
+    }
+  )
+}
+
+// 清理 WebSocket 事件监听
+const cleanupWebSocketEvents = () => {
+  console.log('清理大厅页面 WebSocket 事件监听')
+  if (wsService.socket) {
+    wsService.socket.off('roomInvitation', handleRoomInvitation)
+  }
+  // 移除连接成功的回调
+  wsService.offConnect(setupEvents)
+  // 清理处理中的邀请记录
+  processingInvites.value.clear()
+}
+
+// 组件挂载时设置事件监听
+onMounted(() => {
+  console.log('HomeView 组件挂载')
+  setupWebSocketEvents()
+})
+
+// 组件卸载时清理事件监听
+onUnmounted(() => {
+  console.log('HomeView 组件卸载')
+  cleanupWebSocketEvents()
+})
 </script>
 
 <style scoped>

@@ -24,19 +24,21 @@ export const useFriendStore = defineStore('friend', () => {
       }
 
       loading.value = true
+      console.log('正在获取好友列表...')
       const response = await wsService.getFriends()
       if (response.success) {
-        // 确保每个好友只有一个状态
+        // 确保每个好友都有正确的状态
         const uniqueFriends = response.data.friends.map(friend => ({
           ...friend,
-          status: friend.status || 'offline' // 确保有状态值
+          status: friend.status || 'offline', // 确保有状态值
+          lastOnline: friend.lastOnline || new Date().toISOString()
         }))
         friends.value = uniqueFriends
         
-        console.log('更新后的好友列表:', friends.value.map(f => ({
-          username: f.username,
-          status: f.status
-        })))
+        console.log('好友列表更新成功:', {
+          total: uniqueFriends.length,
+          online: uniqueFriends.filter(f => f.status === 'online').length
+        })
       }
       return response
     } catch (error) {

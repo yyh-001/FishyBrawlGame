@@ -11,6 +11,7 @@ class WebSocketService {
     this.connectPromise = null
     this.roomListCallbacks = new Set()
     this.onConnectCallbacks = new Set()
+    this.user = null
   }
 
   // 修改连接回调的处理方法
@@ -53,153 +54,170 @@ class WebSocketService {
 
     console.log('开始建立 WebSocket 连接...')
     this.connectPromise = new Promise((resolve, reject) => {
-      this.socket = io(import.meta.env.VITE_API_BASE_URL, {
-        auth: { token },
-        transports: ['websocket'],
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        timeout: 10000
-      })
-
-      this.socket.on('connect', () => {
-        console.log('✅ WebSocket 连接成功')
-        this.connected.value = true
-        
-        // 设置好友事件监听
-        this.setupFriendEvents()
-        
-        resolve()
-        this.connectPromise = null
-        
-        // 使用 Promise.all 执行所有回调
-        Promise.all(
-          Array.from(this.onConnectCallbacks).map(callback => 
-            Promise.resolve().then(() => {
-              try {
-                return callback()
-              } catch (error) {
-                console.error('执行连接回调失败:', error)
-                return null
-              }
-            })
-          )
-        ).catch(error => {
-          console.error('执行连接回调时发生错误:', error)
+      try {
+        this.socket = io(import.meta.env.VITE_WS_URL, {
+          auth: { token },
+          transports: ['websocket'],
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+          timeout: 10000
         })
-        
-        if (this.currentRoom.value) {
-          console.log(`尝试重新加入房间: ${this.currentRoom.value}`)
-          this.joinRoom(this.currentRoom.value)
-        }
-      })
 
-      this.socket.on('connect_error', (error) => {
-        console.error('❌ WebSocket 连接错误:', error.message)
-        this.connected.value = false
-        reject(error)
-        this.connectPromise = null
-        ElMessage.error(error.message || '连接失败')
-      })
-
-      this.socket.on('disconnect', (reason) => {
-        console.log('⚠️ WebSocket 断开连接, 原因:', reason)
-        this.connected.value = false
-      })
-
-      // 房间事件监听
-      this.socket.on('roomListUpdated', () => {
-        console.log('🔄 房间列表更新事件触发')
-        console.log('正在通知', this.roomListCallbacks.size, '个监听器')
-        this.roomListCallbacks.forEach(callback => callback())
-      })
-
-      this.socket.on('playerJoined', (data) => {
-        console.log('👥 收到playerJoined事件:', data)
-        try {
-          // 直接使用 newPlayer 中的信息
-          const username = data.newPlayer?.username || '未知玩家'
-          ElMessage.success(`${username} 加入了房间`)
+        this.socket.on('connect', async () => {
+          console.log('✅ WebSocket 连接成功')
+          this.connected.value = true
           
-          // 触发房间列表更新
-          this.roomListCallbacks.forEach(callback => callback())
-        } catch (error) {
-          console.error('解析玩家加入信息失败:', error)
-          ElMessage.info('有新玩家加入房间')
-        }
-      })
-
-      this.socket.on('playerLeft', (data) => {
-        console.log('👋 收到playerLeft事件:', data)
-        try {
-          // 直接使用事件数据中的用户名
-          const username = data.username || '未知玩家'
-          ElMessage.info(`${username} 离开了房间`)
+          // 设置好友事件监听
+          this.setupFriendEvents()
           
-          // 触发房间列表更新
-          this.roomListCallbacks.forEach(callback => callback())
-        } catch (error) {
-          console.error('解析玩家离开信息失败:', error)
-          ElMessage.info('有玩家离开了房间')
-        }
-      })
-
-      this.socket.on('roomDeleted', (data) => {
-        console.log('🗑️ 房间已删除:', data.roomId)
-        if (this.currentRoom.value === data.roomId) {
-          this.currentRoom.value = null
-          ElMessage.warning('房间已被解散')
-        }
-      })
-
-      this.socket.on('readyStateChanged', (data) => {
-        console.log('🎮 收到readyStateChanged事件:', data)
-        try {
-          if (!data) {
-            console.warn('⚠️ 收到空的准备状态数据')
-            return
+          // 连接成功后立即获取好友状态
+          try {
+            const store = useFriendStore()
+            await store.getFriends()
+            console.log('初始好友状态已更新')
+          } catch (error) {
+            console.error('获取初始好友状态失败:', error)
           }
-
-          // 如果有 changedPlayer 字段
-          if (data.changedPlayer) {
-            const readyStatus = data.changedPlayer.ready ? '准备' : '取消准备'
-            console.log('🎮 准备状态更新:', {
-              roomId: data.roomId,
-              player: data.changedPlayer,
-              ready: data.changedPlayer.ready,
-              allReady: data.allReady
-            })
-            ElMessage.info(`${data.changedPlayer.username} ${readyStatus}`)
-          }
-          // 如果有 player 字段
-          else if (data.player) {
-            const readyStatus = data.player.ready ? '准备' : '取消准备'
-            console.log('🎮 准备状态更新:', {
-              roomId: data.roomId,
-              player: data.player,
-              ready: data.player.ready,
-              allReady: data.allReady
-            })
-            ElMessage.info(`${data.player.username} ${readyStatus}`)
-          }
-          // 如果只有玩家列表
-          else if (data.players) {
-            console.log('🎮 房间玩家状态更新:', {
-              roomId: data.roomId,
-              players: data.players,
-              allReady: data.allReady
+          
+          // 保存用户信息
+          this.user = this.socket.auth?.user
+          
+          // 加入用户专属房间
+          if (this.user?.userId) {
+            this.socket.emit('joinUserRoom', this.user.userId, (response) => {
+              console.log('加入用户专属房间:', response)
             })
           }
-          // 其他情况
-          else {
-            console.warn('⚠️ 未知的准备状态数据格式:', data)
-          }
-        } catch (error) {
-          console.error('❌ 处理准备状态变更事件失败:', error, {
-            data
+          
+          // 执行所有连接回调
+          this.onConnectCallbacks.forEach(callback => {
+            try {
+              callback()
+            } catch (error) {
+              console.error('执行连接回调失败:', error)
+            }
           })
-        }
-      })
+          
+          resolve()
+          this.connectPromise = null
+          
+          if (this.currentRoom.value) {
+            console.log(`尝试重新加入房间: ${this.currentRoom.value}`)
+            this.joinRoom(this.currentRoom.value)
+          }
+        })
+
+        this.socket.on('connect_error', (error) => {
+          console.error('❌ WebSocket 连接错误:', error.message)
+          this.connected.value = false
+          reject(error)
+          this.connectPromise = null
+          ElMessage.error(error.message || '连接失败')
+        })
+
+        this.socket.on('disconnect', (reason) => {
+          console.log('⚠️ WebSocket 断开连接, 原因:', reason)
+          this.connected.value = false
+        })
+
+        // 房间事件监听
+        this.socket.on('roomListUpdated', () => {
+          console.log('🔄 房间列表更新事件触发')
+          console.log('正在通知', this.roomListCallbacks.size, '个监听器')
+          this.roomListCallbacks.forEach(callback => callback())
+        })
+
+        this.socket.on('playerJoined', (data) => {
+          console.log('👥 收到playerJoined事件:', data)
+          try {
+            // 直接使用 newPlayer 中的信息
+            const username = data.newPlayer?.username || '未知玩家'
+            ElMessage.success(`${username} 加入了房间`)
+            
+            // 触发房间列表更新
+            this.roomListCallbacks.forEach(callback => callback())
+          } catch (error) {
+            console.error('解析玩家加入信息失败:', error)
+            ElMessage.info('有新玩家加入房间')
+          }
+        })
+
+        this.socket.on('playerLeft', (data) => {
+          console.log('👋 收到playerLeft事件:', data)
+          try {
+            // 直接使用事件数据中的用户名
+            const username = data.username || '未知玩家'
+            ElMessage.info(`${username} 离开了房间`)
+            
+            // 触发房间列表更新
+            this.roomListCallbacks.forEach(callback => callback())
+          } catch (error) {
+            console.error('解析玩家离开信息失败:', error)
+            ElMessage.info('有玩家离开了房间')
+          }
+        })
+
+        this.socket.on('roomDeleted', (data) => {
+          console.log('🗑️ 房间已删除:', data.roomId)
+          if (this.currentRoom.value === data.roomId) {
+            this.currentRoom.value = null
+            ElMessage.warning('房间已被解散')
+          }
+        })
+
+        this.socket.on('readyStateChanged', (data) => {
+          console.log('🎮 收到readyStateChanged事件:', data)
+          try {
+            if (!data) {
+              console.warn('⚠️ 收到空的准备状态数据')
+              return
+            }
+
+            // 如果有 changedPlayer 字段
+            if (data.changedPlayer) {
+              const readyStatus = data.changedPlayer.ready ? '准备' : '取消准备'
+              console.log('🎮 准备状态更新:', {
+                roomId: data.roomId,
+                player: data.changedPlayer,
+                ready: data.changedPlayer.ready,
+                allReady: data.allReady
+              })
+              ElMessage.info(`${data.changedPlayer.username} ${readyStatus}`)
+            }
+            // 如果有 player 字段
+            else if (data.player) {
+              const readyStatus = data.player.ready ? '准备' : '取消准备'
+              console.log('🎮 准备状态更新:', {
+                roomId: data.roomId,
+                player: data.player,
+                ready: data.player.ready,
+                allReady: data.allReady
+              })
+              ElMessage.info(`${data.player.username} ${readyStatus}`)
+            }
+            // 如果只有玩家列表
+            else if (data.players) {
+              console.log('🎮 房间玩家状态更新:', {
+                roomId: data.roomId,
+                players: data.players,
+                allReady: data.allReady
+              })
+            }
+            // 其他情况
+            else {
+              console.warn('⚠️ 未知的准备状态数据格式:', data)
+            }
+          } catch (error) {
+            console.error('❌ 处理准备状态变更事件失败:', error, {
+              data
+            })
+          }
+        })
+      } catch (error) {
+        console.error('WebSocket 连接失败:', error)
+        reject(error)
+      }
     })
 
     return this.connectPromise
@@ -287,53 +305,40 @@ class WebSocketService {
   leaveRoom() {
     return new Promise((resolve, reject) => {
       if (!this.socket?.connected) {
+        console.error('WebSocket 未连接')
         reject(new Error('WebSocket 未连接'))
         return
       }
 
-      // 如果当前不在任何房间中，直接返回成功
-      if (!this.currentRoom.value) {
-        resolve({ message: '您已不在房间中' })
-        return
-      }
-
-      // 发送离开房间事件
-      this.socket.emit('leaveRoom', {}, (response) => {
+      console.log('发送离开房间请求')
+      this.socket.emit('leaveRoom', (response) => {
+        console.log('收到离开房间响应:', response)
         if (response.success) {
-          // 清除当前房间状态
+          // 清理当前房间状态
           this.currentRoom.value = null
-          resolve(response.data)
+          resolve(response)
         } else {
-          // 如果返回房间不存在的错误，也视为成功离开
-          if (response.error === '房间不存在') {
-            this.currentRoom.value = null
-            resolve({ message: '房间已不存在' })
-          } else {
-            reject(new Error(response.error))
-          }
+          reject(new Error(response.error || '离开房间失败'))
         }
       })
     })
   }
 
-  toggleReady() {
+  toggleReady(roomId) {
     return new Promise((resolve, reject) => {
-      if (!this.socket?.connected || !this.currentRoom.value) {
-        reject(new Error('未在房间中'))
+      if (!this.socket?.connected) {
+        console.error('WebSocket 未连接')
+        reject(new Error('WebSocket 未连接'))
         return
       }
 
-      console.log('🎮 发送准备状态切换请求:', {
-        roomId: this.currentRoom.value
-      })
-
-      this.socket.emit('toggleReady', { roomId: this.currentRoom.value }, (response) => {
-        console.log('✅ 准备状态切换响应:', response)
+      console.log('发送切换准备状态请求:', { roomId })
+      this.socket.emit('toggleReady', { roomId }, (response) => {
+        console.log('收到切换准备状态响应:', response)
         if (response.success) {
-          resolve(response.data)
+          resolve(response)
         } else {
-          console.error('❌ 准备状态切换失败:', response.error)
-          reject(new Error(response.error))
+          reject(new Error(response.error || '切换准备状态失败'))
         }
       })
     })
@@ -611,6 +616,110 @@ class WebSocketService {
         } else {
           console.error('❌ 获取好友请求列表失败:', response.error)
           reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 添加快速创建房间方法
+  createQuickRoom() {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      const username = this.socket.user?.username || '未知玩家'
+      console.log('正在创建快速房间...')
+      this.socket.emit('createRoom', { 
+        name: `${username}的房间` 
+      }, (response) => {
+        if (response.success) {
+          console.log('✅ 快速房间创建成功:', response.data)
+          resolve(response.data)
+        } else {
+          console.error('❌ 快速房间创建失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 邀请好友加入房间
+  inviteToRoom({ friendId, roomId }) {
+    return new Promise((resolve, reject) => {
+      console.log('调用 inviteToRoom:', {
+        friendId,
+        roomId,
+        socketConnected: this.socket?.connected,
+        socketId: this.socket?.id,
+        currentUser: this.user,
+        auth: this.socket?.auth
+      })
+
+      if (!this.socket?.connected) {
+        console.error('WebSocket 未连接')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      // 确保用户已登录
+      if (!this.user?.userId) {
+        console.error('用户未登录')
+        reject(new Error('用户未登录'))
+        return
+      }
+
+      console.log('发送邀请好友请求:', { 
+        friendId, 
+        roomId,
+        userId: this.user?.userId
+      })
+
+      this.socket.emit('inviteToRoom', { 
+        friendId, 
+        roomId,
+        userId: this.user.userId  // 显式传递用户ID
+      }, (response) => {
+        console.log('收到邀请好友响应:', response)
+        if (response.success) {
+          console.log('邀请好友请求发送成功:', response)
+          resolve(response.data)
+        } else {
+          console.error('邀请好友请求失败:', {
+            error: response.error,
+            friendId,
+            roomId,
+            userId: this.user?.userId,
+            socketId: this.socket?.id
+          })
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 处理房间邀请
+  handleRoomInvitation({ roomId, accept }) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        console.error('WebSocket 未连接')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('发送邀请响应:', {
+        roomId,
+        accept,
+        userId: this.user?.userId
+      })
+
+      this.socket.emit('handleRoomInvitation', { roomId, accept }, (response) => {
+        console.log('收到邀请响应处理结果:', response)
+        if (response.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response.error || '处理邀请失败'))
         }
       })
     })

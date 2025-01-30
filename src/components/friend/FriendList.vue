@@ -23,7 +23,6 @@
       >
         <FriendItem 
           :friend="friend" 
-          @remove="handleInvite"
           @click="handleFriendClick"
         />
       </div>
@@ -43,7 +42,6 @@
       @update:visible="showDetail = $event"
       :friend="selectedFriend"
       @remove="handleRemoveFriend"
-      @invite="handleInvite"
     />
   </div>
 </template>
@@ -91,13 +89,6 @@ const handleFriendClick = (friend) => {
   selectedFriend.value = friend
   showDetail.value = true
   console.log('showDetail:', showDetail.value)
-}
-
-// 处理邀请对战
-const handleInvite = (friend) => {
-  console.log('邀请好友:', friend)
-  // TODO: 实现邀请对战功能
-  ElMessage.info('邀请对战功能开发中...')
 }
 
 // 监听 showDetail 的变化

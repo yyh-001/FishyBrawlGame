@@ -32,6 +32,14 @@ const routes = [
     meta: {
       requiresAuth: true
     }
+  },
+  {
+    path: '/room/:roomId',
+    name: 'RoomDetail',
+    component: () => import('@/views/RoomView.vue'),
+    meta: {
+      requiresAuth: true
+    }
   }
 ]
 
