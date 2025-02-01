@@ -14,6 +14,24 @@ class WebSocketService {
     this.user = null
   }
 
+  // 发送事件并等待响应
+  async emit(event, data) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+      
+      this.socket.emit(event, data, (response) => {
+        if (response.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
   // 修改连接回调的处理方法
   onConnect(callback) {
     if (typeof callback !== 'function') {
@@ -270,58 +288,36 @@ class WebSocketService {
   joinRoom(roomId) {
     return new Promise((resolve, reject) => {
       if (!this.socket?.connected) {
+        console.error('❌ 加入房间失败: WebSocket未连接')
         reject(new Error('WebSocket 未连接'))
         return
       }
 
-      // 从 localStorage 获取用户信息
-      const userInfo = JSON.parse(localStorage.getItem('userInfo'))
-      if (!userInfo) {
-        reject(new Error('用户信息不存在'))
-        return
+      // 先离开之前的房间
+      if (this.currentRoom.value) {
+        this.leaveRoom(this.currentRoom.value)
       }
 
-      // 构建玩家信息
-      const playerInfo = {
-        userId: userInfo.userId,
-        username: userInfo.username,
-        rating: userInfo.rating || 1000
-      }
-
-      this.socket.emit('joinRoom', { 
-        roomId,
-        player: playerInfo
-      }, (response) => {
+      console.log('🚪 尝试加入房间:', roomId)
+      this.socket.emit('joinRoom', { roomId }, (response) => {
+        console.log('📥 收到加入房间响应:', response)
         if (response.success) {
+          console.log('✅ 加入房间成功:', roomId)
           this.currentRoom.value = roomId
-          resolve(response.data)
+          resolve(response)
         } else {
+          console.error('❌ 加入房间失败:', response.error)
           reject(new Error(response.error))
         }
       })
     })
   }
 
-  leaveRoom() {
-    return new Promise((resolve, reject) => {
-      if (!this.socket?.connected) {
-        console.error('WebSocket 未连接')
-        reject(new Error('WebSocket 未连接'))
-        return
-      }
-
-      console.log('发送离开房间请求')
-      this.socket.emit('leaveRoom', (response) => {
-        console.log('收到离开房间响应:', response)
-        if (response.success) {
-          // 清理当前房间状态
-          this.currentRoom.value = null
-          resolve(response)
-        } else {
-          reject(new Error(response.error || '离开房间失败'))
-        }
-      })
-    })
+  leaveRoom(roomId) {
+    if (this.socket?.connected) {
+      console.log('🚶 离开房间:', roomId)
+      this.socket.emit('leaveRoom', { roomId })
+    }
   }
 
   toggleReady(roomId) {
@@ -722,6 +718,173 @@ class WebSocketService {
           reject(new Error(response.error || '处理邀请失败'))
         }
       })
+    })
+  }
+
+  // 开始匹配
+  startMatching() {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('发送开始匹配请求')
+      this.socket.emit('startMatching', (response) => {
+        console.log('收到开始匹配响应:', response)
+        if (response.success) {
+          resolve(response.data)
+        } else {
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 取消匹配
+  cancelMatching() {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('发送取消匹配请求')
+      this.socket.emit('cancelMatching', (response) => {
+        console.log('收到取消匹配响应:', response)
+        if (response.success) {
+          resolve(response.data)
+        } else {
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 获取可选英雄
+  getAvailableHeroes(roomId) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        console.error('❌ 获取英雄列表失败: WebSocket未连接')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('🦸 获取可选英雄列表:', roomId)
+      this.socket.emit('getAvailableHeroes', { roomId }, (response) => {
+        console.log('📥 收到英雄列表响应:', response)
+        if (response.success) {
+          console.log('✅ 获取英雄列表成功:', {
+            roomId,
+            heroCount: response.data.heroes.length,
+            heroes: response.data.heroes.map(h => ({
+              id: h._id,
+              name: h.name
+            }))
+          })
+          resolve(response)
+        } else {
+          console.error('❌ 获取英雄列表失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 确认英雄选择
+  confirmHeroSelection({ roomId, heroId }) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        console.error('❌ 确认英雄选择失败: WebSocket未连接')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('👑 确认英雄选择:', { roomId, heroId })
+      this.socket.emit('confirmHeroSelection', { roomId, heroId }, (response) => {
+        console.log('📥 收到确认英雄选择响应:', response)
+        if (response.success) {
+          console.log('✅ 确认英雄选择成功')
+          resolve(response)
+        } else {
+          console.error('❌ 确认英雄选择失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
+
+  // 添加事件监听
+  on(event, callback) {
+    this.socket?.on(event, callback)
+  }
+  
+  // 移除事件监听
+  off(event, callback) {
+    this.socket?.off(event, callback)
+  }
+
+  // 清理所有事件监听
+  cleanupListeners() {
+    if (this.socket) {
+      this.socket.removeAllListeners()
+    }
+  }
+
+  // 等待房间就绪
+  waitForRoomReady(roomId, timeout = 10000, maxRetries = 3) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+      
+      console.log('🕒 等待房间就绪:', roomId)
+      
+      let retryCount = 0
+      let checkInterval
+      let resolved = false
+      
+      // 先等待一小段时间再开始检查
+      setTimeout(() => {
+        // 定期检查房间状态
+        checkInterval = setInterval(() => {
+          if (resolved) return
+          
+          this.socket.emit('checkRoomStatus', { roomId }, (response) => {
+            if (response.success && response.data.ready) {
+              resolved = true
+              clearTimeout(timeoutId)
+              clearInterval(checkInterval)
+              console.log('✅ 房间已就绪:', response.data)
+              resolve(response.data)
+            } else {
+              console.log('⏳ 房间未就绪，重试中...', {
+                retryCount: retryCount + 1,
+                maxRetries,
+                error: response.error,
+                status: response.data?.status
+              })
+              
+              retryCount++
+              if (retryCount >= maxRetries) {
+                resolved = true
+                clearTimeout(timeoutId)
+                clearInterval(checkInterval)
+                reject(new Error('房间状态检查失败次数过多'))
+              }
+            }
+          })
+        }, 1000)
+      }, 500)  // 等待500ms后开始检查
+      
+      // 设置超时
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          clearInterval(checkInterval)
+          reject(new Error('等待房间就绪超时'))
+        }
+      }, timeout)
     })
   }
 }

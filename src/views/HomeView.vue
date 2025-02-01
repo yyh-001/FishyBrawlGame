@@ -123,9 +123,9 @@
         </div>
 
         <!-- 匹配对战弹窗 -->
-        <matchmaking-modal 
-          v-model:visible="showMatchmaking"
-          :room-id="currentRoomId"
+        <matching-modal 
+          v-model:visible="showMatchingModal"
+          @cancel="handleCancelMatching"
         />
       </main>
     </div>
@@ -275,6 +275,7 @@ import MatchmakingModal from '@/components/game/MatchmakingModal.vue'
 import FriendList from '@/components/friend/FriendList.vue'
 import FriendRequests from '@/components/friend/FriendRequests.vue'
 import { useResponsive } from '@/composables/useResponsive'
+import MatchingModal from '@/components/game/MatchingModal.vue'
 
 const router = useRouter()
 const wsService = useWebSocketService()
@@ -299,7 +300,7 @@ const userRating = computed(() => {
   return user ? user.rating : 1000
 })
 
-const showMatchmaking = ref(false)
+const showMatchingModal = ref(false)
 
 // 计算统计数据
 const stats = computed(() => {
@@ -411,14 +412,35 @@ watch(showSocialPanel, (newVal) => {
 
 const { isMobile } = useResponsive()
 
-// 处理开始匹配
+// 开始匹配
+const startMatching = async () => {
+  try {
+    console.log('点击开始匹配按钮')
+    await wsService.startMatching()
+    console.log('匹配请求发送成功')
+    showMatchingModal.value = true
+  } catch (error) {
+    console.error('开始匹配失败:', error)
+    ElMessage.error(error.message || '开始匹配失败')
+    showMatchingModal.value = false
+  }
+}
+
+// 取消匹配
+const handleCancelMatching = () => {
+  console.log('取消匹配')
+  showMatchingModal.value = false
+  ElMessage.info('已取消匹配')
+}
+
+// 修改匹配按钮的点击处理
 const handleStartMatch = () => {
-  currentRoomId.value = ''
-  showMatchmaking.value = true
+  console.log('准备开始匹配')
+  startMatching()
 }
 
 // 监听匹配状态
-watch(showMatchmaking, (newVal) => {
+watch(showMatchingModal, (newVal) => {
   if (!newVal) {
     currentRoomId.value = ''
   }
