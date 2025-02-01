@@ -165,13 +165,27 @@ npm run build
 
 ```
 src/
-├── api/          # API 请求
-├── assets/       # 静态资源
-├── components/   # 组件
-├── router/       # 路由配置
-├── stores/       # Pinia 状态管理
-├── views/        # 页面视图
-└── App.vue       # 根组件
+├── api/ # API 请求封装
+├── assets/ # 静态资源
+│ ├── icons/ # 图标资源
+│ ├── images/ # 图片资源
+│ └── styles/ # 样式文件
+├── components/ # 公共组件
+│ ├── common/ # 通用组件
+│ ├── game/ # 游戏相关组件
+│ ├── friend/ # 好友相关组件
+│ └── layout/ # 布局组件
+├── composables/ # 组合式函数
+├── directives/ # 自定义指令
+├── router/ # 路由配置
+├── services/ # 服务封装
+├── stores/ # 状态管理
+├── types/ # 类型定义
+├── utils/ # 工具函数
+└── views/ # 页面视图
+├── auth/ # 认证相关页面
+├── game/ # 游戏相关页面
+└── user/ # 用户相关页面
 ```
 
 ## 主要功能
