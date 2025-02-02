@@ -315,8 +315,7 @@ class WebSocketService {
 
   leaveRoom(roomId) {
     if (this.socket?.connected) {
-      console.log('🚶 离开房间:', roomId)
-      this.socket.emit('leaveRoom', { roomId })
+      this.socket.emit('leaveRoom', roomId);
     }
   }
 

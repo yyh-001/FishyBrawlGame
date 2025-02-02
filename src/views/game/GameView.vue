@@ -136,7 +136,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useGameStore } from '@/stores/game'
@@ -225,39 +225,32 @@ const confirmHeroSelection = async () => {
   if (!selectedHeroId.value) return
   
   try {
-    const response = await new Promise((resolve, reject) => {
-      wsService.socket.emit('confirmHeroSelection', {
-        roomId: route.params.roomId,
-        heroId: selectedHeroId.value
-      }, (response) => {
-        if (response.success) {
-          resolve(response)
-        } else {
-          reject(new Error(response.error))
-        }
-      })
-    })
+    loading.value = true;
+    console.log('确认英雄选择:', {
+      roomId: route.params.roomId,
+      heroId: selectedHeroId.value
+    });
 
-    console.log('英雄选择确认成功:', response.data)
+    // 发送英雄选择确认
+    wsService.socket.emit('confirmHeroSelection', {
+      roomId: route.params.roomId,
+      heroId: selectedHeroId.value
+    });
+
   } catch (error) {
     console.error('确认英雄选择失败:', error)
     ElMessage.error(error.message || '确认选择失败')
+  } finally {
+    loading.value = false;
   }
 }
 
 // 监听游戏事件
 const setupGameEvents = () => {
-  // 所有玩家选择完成
+  // 只保留 allHeroesSelected 监听
   wsService.socket?.on('allHeroesSelected', (data) => {
     console.log('👥 所有玩家已选择英雄:', data)
     // 可以显示倒计时
-  })
-
-  // 游戏开始
-  wsService.socket?.on('gameStart', (data) => {
-    console.log('🎮 游戏开始:', data)
-    gameState.value = 'playing'
-    currentTurn.value = data.turn
   })
 }
 
@@ -320,25 +313,129 @@ const cleanupWebSocket = () => {
 }
 
 onMounted(() => {
-  console.log('🎮 游戏视图组件挂载')
-  initializeGame()
-  setupGameEvents()
+  console.log('🎮 游戏视图组件挂载:', {
+    roomId: route.params.roomId,
+    currentRoute: route.path,
+    socketConnected: wsService.socket?.connected,
+    timestamp: new Date().toISOString()
+  });
+
+  // 确保 socket 连接
+  if (!wsService.socket?.connected) {
+    console.log('🔌 WebSocket 未连接，尝试重新连接...');
+    wsService.connect();
+  }
+
+  // 加入房间的 socket room
+  wsService.socket?.emit('joinRoom', {
+    roomId: route.params.roomId
+  }, (response) => {
+    console.log('📥 加入房间响应:', response);
+  });
+
+  initializeGame();
+  setupGameEvents();
   
   // 监听其他玩家选择英雄
   wsService.socket?.on('playerSelectedHero', (data) => {
-    console.log('其他玩家选择了英雄:', data)
-  })
-})
+    console.log('👤 其他玩家选择了英雄:', {
+      data,
+      timestamp: new Date().toISOString()
+    });
+  });
 
-onUnmounted(() => {
-  console.log('🎮 游戏视图组件卸载')
-  cleanupWebSocket()
-  if (route.params.roomId) {
-    wsService.leaveRoom(route.params.roomId)
+  // 监听英雄选择确认响应
+  wsService.socket?.on('heroSelectionConfirmed', (data) => {
+    console.log('✅ 英雄选择确认响应:', {
+      success: data.success,
+      data,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (data.success) {
+      ElMessage.success('英雄选择成功');
+    }
+  });
+
+  // 监听英雄选择更新
+  wsService.socket?.on('heroSelectionUpdated', (data) => {
+    console.log('🔄 英雄选择状态更新:', {
+      data,
+      allSelected: data.allSelected,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (data.allSelected) {
+      ElMessage.info('所有玩家已选择英雄，即将开始游戏...');
+    }
+  });
+
+  // 监听游戏开始
+  wsService.socket?.on('gameStart', async (data) => {
+    try {
+      console.log('🎮 收到游戏开始事件:', {
+        data,
+        roomId: route.params.roomId,
+        currentRoute: route.path,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 存储游戏初始数据
+      const gameData = JSON.stringify(data);
+      localStorage.setItem(`game_${route.params.roomId}`, gameData);
+      console.log('💾 游戏数据已保存到 localStorage:', {
+        key: `game_${route.params.roomId}`,
+        dataSize: gameData.length,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 跳转到游戏界面
+      console.log('🚀 准备跳转到游戏界面:', {
+        targetPath: `/game-board/${route.params.roomId}`,
+        timestamp: new Date().toISOString()
+      });
+
+      // 确保在路由跳转前等待一下
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      try {
+        await router.push({
+          name: 'GameBoard', // 使用命名路由
+          params: { 
+            roomId: route.params.roomId 
+          },
+          replace: true
+        });
+        console.log('✅ 跳转完成');
+        ElMessage.success('游戏开始！');
+      } catch (routerError) {
+        console.error('❌ 路由跳转失败:', {
+          error: routerError,
+          route: {
+            name: 'GameBoard',
+            params: { roomId: route.params.roomId }
+          }
+        });
+        throw routerError;
+      }
+    } catch (error) {
+      console.error('❌ 跳转到游戏界面失败:', {
+        error,
+        errorMessage: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
+      ElMessage.error('进入游戏失败，请刷新页面重试');
+    }
+  });
+});
+
+onBeforeUnmount(() => {
+  // 只有在返回大厅时才触发离开房间
+  if (router.currentRoute.value.name === 'lobby') {
+    wsService.leaveRoom(route.params.roomId);
   }
-  wsService.socket?.off('allHeroesSelected')
-  wsService.socket?.off('gameStart')
-})
+});
 </script>
 
 <style scoped>
