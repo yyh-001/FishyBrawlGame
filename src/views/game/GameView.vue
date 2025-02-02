@@ -59,13 +59,24 @@
 
         <!-- 英雄选择阶段 -->
         <div v-else-if="gameState === 'selecting'" class="hero-selection">
+          <div class="timer-container">
+            <div :class="timerClass">
+              <span>选择英雄: {{ formatTime(timeRemaining) }}</span>
+            </div>
+          </div>
+          
           <h2 class="text-2xl font-bold text-center text-white mb-8">选择你的英雄</h2>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-6 px-4">
-            <div v-for="hero in availableHeroes" 
-                 :key="hero._id"
-                 class="hero-card"
-                 :class="{ 'selected': selectedHeroId === hero._id }"
-                 @click="selectHero(hero._id)">
+            <div 
+              v-for="hero in availableHeroes" 
+              :key="hero._id"
+              class="hero-card"
+              :class="{
+                'selected': selectedHeroId === hero._id,
+                'disabled': timeRemaining <= 0
+              }"
+              @click="handleHeroSelect(hero)"
+            >
               <div class="bg-gray-800 rounded-lg p-4 hover:bg-gray-700 transition-all cursor-pointer border-2"
                    :class="{ 'border-yellow-500': selectedHeroId === hero._id, 'border-transparent': selectedHeroId !== hero._id }">
                 <div class="hero-header flex justify-between items-center mb-2">
@@ -92,9 +103,11 @@
             </div>
           </div>
           <div class="text-center mt-8">
-            <button class="confirm-button" 
-                    :disabled="!selectedHeroId" 
-                    @click="confirmHeroSelection">
+            <button 
+              class="confirm-button"
+              :disabled="!selectedHeroId || timeRemaining <= 0"
+              @click="confirmHeroSelection"
+            >
               确认选择
             </button>
           </div>
@@ -102,7 +115,7 @@
 
         <!-- 游戏主界面 -->
         <div v-else-if="gameState === 'playing'" class="game-board">
-          <!-- 游戏界面内容 -->
+          <GameBoard />
         </div>
       </main>
     </div>
@@ -136,12 +149,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, onBeforeUnmount, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useGameStore } from '@/stores/game'
 import { wsService } from '@/services/websocket'
 import { ElLoading } from 'element-plus'
+import GameBoard from './GameBoard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -156,6 +170,8 @@ const error = ref(null)
 const gameState = ref('selecting')
 const availableHeroes = ref([])
 const selectedHeroId = ref(null)
+const timeRemaining = ref(30000) // 30秒
+const timerInterval = ref(null) // 用于存储定时器
 
 // 获取游戏状态
 const fetchGameState = async () => {
@@ -169,13 +185,54 @@ const fetchGameState = async () => {
   }
 }
 
+// 开始倒计时
+const startCountdown = (initialTime) => {
+  // 清除可能存在的旧定时器
+  if (timerInterval.value) {
+    console.log('🔄 清除旧的倒计时定时器')
+    clearInterval(timerInterval.value)
+  }
+
+  console.log('⏰ 开始倒计时:', {
+    initialTime,
+    formattedTime: formatTime(initialTime),
+    timestamp: new Date().toISOString()
+  })
+
+  timeRemaining.value = initialTime
+  
+  // 创建新的定时器，每100ms更新一次
+  timerInterval.value = setInterval(() => {
+    if (timeRemaining.value <= 0) {
+      console.log('⌛ 倒计时结束')
+      clearInterval(timerInterval.value)
+      return
+    }
+
+    // 记录重要时间点
+    const oldTime = timeRemaining.value
+    timeRemaining.value = Math.max(0, timeRemaining.value - 100)
+
+    // 在关键时间点输出日志
+    if (Math.floor(oldTime / 1000) !== Math.floor(timeRemaining.value / 1000)) {
+      console.log('⏱️ 倒计时更新:', {
+        timeRemaining: timeRemaining.value,
+        formattedTime: formatTime(timeRemaining.value),
+        isUrgent: timeRemaining.value <= 5000,
+        timestamp: new Date().toISOString()
+      })
+    }
+  }, 100)
+}
+
 // 初始化游戏
 const initializeGame = async () => {
   try {
     loading.value = true
-    console.log('初始化游戏...', {
+    console.log('🎮 初始化游戏...', {
       roomId: route.params.roomId,
-      socketConnected: wsService.socket?.connected
+      socketConnected: wsService.socket?.connected,
+      timestamp: new Date().toISOString()
     })
 
     if (!wsService.socket?.connected) {
@@ -186,7 +243,12 @@ const initializeGame = async () => {
       wsService.socket.emit('getAvailableHeroes', {
         roomId: route.params.roomId
       }, (response) => {
-        console.log('收到英雄列表响应:', response)
+        console.log('📥 收到英雄列表响应:', {
+          success: response.success,
+          heroCount: response.data?.heroes?.length,
+          selectionTimeLimit: response.data?.selectionTimeLimit,
+          timestamp: new Date().toISOString()
+        })
         if (response.success) {
           resolve(response)
         } else {
@@ -195,13 +257,26 @@ const initializeGame = async () => {
       })
     })
 
-    console.log('✅ 获取英雄列表成功:', response.data)
-    availableHeroes.value = response.data.heroes
-    console.log('处理后的英雄数据:', availableHeroes.value)
+    console.log('✅ 获取英雄列表成功:', {
+      heroCount: response.data.heroes.length,
+      selectionTimeLimit: response.data.selectionTimeLimit,
+      timestamp: new Date().toISOString()
+    })
     
-    console.log('🎮 游戏初始化完成')
+    availableHeroes.value = response.data.heroes
+    
+    // 开始倒计时
+    startCountdown(response.data.selectionTimeLimit * 1000)
+    
+    console.log('✨ 游戏初始化完成', {
+      timestamp: new Date().toISOString()
+    })
   } catch (error) {
-    console.error('❌ 游戏初始化失败:', error)
+    console.error('❌ 游戏初始化失败:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    })
     ElMessage.error(error.message || '游戏初始化失败')
     error.value = error.message
   } finally {
@@ -216,13 +291,14 @@ const retryInitialize = () => {
 }
 
 // 选择英雄
-const selectHero = (heroId) => {
-  selectedHeroId.value = heroId
+const handleHeroSelect = (hero) => {
+  if (timeRemaining.value <= 0) return
+  selectedHeroId.value = hero._id
 }
 
 // 确认英雄选择
 const confirmHeroSelection = async () => {
-  if (!selectedHeroId.value) return
+  if (!selectedHeroId.value || timeRemaining.value <= 0) return
   
   try {
     loading.value = true;
@@ -311,6 +387,18 @@ const cleanupWebSocket = () => {
     console.error('清理WebSocket监听失败:', error)
   }
 }
+
+// 格式化时间
+const formatTime = (ms) => {
+  const seconds = Math.ceil(ms / 1000)
+  return `${seconds}秒`
+}
+
+// 在模板中添加紧急状态样式
+const timerClass = computed(() => ({
+  'timer': true,
+  'urgent': timeRemaining.value <= 5000 // 最后5秒显示紧急样式
+}))
 
 onMounted(() => {
   console.log('🎮 游戏视图组件挂载:', {
@@ -428,12 +516,48 @@ onMounted(() => {
       ElMessage.error('进入游戏失败，请刷新页面重试');
     }
   });
+
+  // 监听倒计时更新
+  wsService.socket?.on('heroSelectionTimeUpdate', (data) => {
+    console.log('🔄 收到服务器倒计时更新:', {
+      serverTime: data.timeRemaining,
+      localTime: timeRemaining.value,
+      diff: Math.abs(timeRemaining.value - data.timeRemaining),
+      needSync: Math.abs(timeRemaining.value - data.timeRemaining) > 1000,
+      timestamp: new Date().toISOString()
+    })
+
+    // 如果服务器时间和本地时间差距超过1秒，则同步
+    if (Math.abs(timeRemaining.value - data.timeRemaining) > 1000) {
+      console.log('⚠️ 本地时间与服务器时间差距过大，进行同步')
+      startCountdown(data.timeRemaining)
+    }
+  });
+
+  // 监听英雄选择更新
+  wsService.socket?.on('heroSelectionUpdated', (data) => {
+    if (data.isAutoSelected && data.userId === wsService.socket?.user?._id) {
+      ElMessage.info('由于未及时选择,系统已为您随机选择英雄')
+      selectedHeroId.value = data.heroId
+    }
+  });
 });
 
 onBeforeUnmount(() => {
   // 只有在返回大厅时才触发离开房间
   if (router.currentRoute.value.name === 'lobby') {
-    wsService.leaveRoom(route.params.roomId);
+    console.log('👋 离开房间:', {
+      roomId: route.params.roomId,
+      timestamp: new Date().toISOString()
+    })
+    wsService.leaveRoom(route.params.roomId)
+  }
+  
+  if (timerInterval.value) {
+    console.log('🧹 清理倒计时定时器', {
+      timestamp: new Date().toISOString()
+    })
+    clearInterval(timerInterval.value)
   }
 });
 </script>
@@ -617,5 +741,19 @@ onBeforeUnmount(() => {
   background: #45a049;
 }
 
-/* 原有的样式保持不变 */
+.timer-container {
+  @apply w-full flex justify-center mb-4;
+}
+
+.timer {
+  @apply px-4 py-2 bg-blue-600 text-white rounded-lg text-lg font-bold transition-colors duration-200;
+}
+
+.timer.urgent {
+  @apply bg-red-600 animate-pulse;
+}
+
+.game-board {
+  @apply w-full h-full flex flex-col;
+}
 </style> 

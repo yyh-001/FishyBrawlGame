@@ -886,6 +886,32 @@ class WebSocketService {
       }, timeout)
     })
   }
+
+  // 刷新商店
+  refreshShop({ roomId }) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        console.error('❌ 刷新商店失败: WebSocket未连接')
+        reject(new Error('WebSocket 未连接'))
+        return
+      }
+
+      console.log('🔄 请求刷新商店:', { roomId })
+      this.socket.emit('refreshShop', { roomId }, (response) => {
+        console.log('📥 收到刷新商店响应:', response)
+        if (response.success) {
+          console.log('✅ 商店刷新成功:', {
+            minions: response.data.minions.length,
+            remainingCoins: response.data.remainingCoins
+          })
+          resolve(response)
+        } else {
+          console.error('❌ 商店刷新失败:', response.error)
+          reject(new Error(response.error))
+        }
+      })
+    })
+  }
 }
 
 // 创建单例实例

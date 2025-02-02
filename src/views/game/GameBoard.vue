@@ -43,18 +43,30 @@
 
       <!-- 商店卡牌 - 减小尺寸 -->
       <div class="shop-cards flex justify-center gap-2 mb-2 scale-90">
-        <div 
-          v-for="i in 3" 
-          :key="i"
-          class="shop-slot w-32 h-44 border-2 border-dashed border-gray-600 rounded-lg"
-          :class="{ 'border-blue-400': gameState.shopFrozen }"
-        >
-          <div class="w-full h-full flex items-center justify-center text-gray-500">
-            <svg class="w-12 h-12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-            </svg>
+        <template v-if="gameState.shopMinions && gameState.shopMinions.length > 0">
+          <MinionCard
+            v-for="minion in gameState.shopMinions"
+            :key="minion._id"
+            :minion="minion"
+            :purchasable="true"
+            :cost="3"
+            @click="handlePurchaseMinion(minion)"
+          />
+        </template>
+        <template v-else>
+          <div 
+            v-for="i in 3" 
+            :key="i"
+            class="shop-slot w-32 h-44 border-2 border-dashed border-gray-600 rounded-lg"
+            :class="{ 'border-blue-400': gameState.shopFrozen }"
+          >
+            <div class="w-full h-full flex items-center justify-center text-gray-500">
+              <svg class="w-12 h-12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+              </svg>
+            </div>
           </div>
-        </div>
+        </template>
       </div>
 
       <!-- 操作按钮 - 减小尺寸 -->
@@ -74,8 +86,9 @@
         <!-- 刷新商店按钮 -->
         <button 
           class="action-icon-btn"
-          @click="refreshShop"
-          :disabled="gameState.coins < 1"
+          @click="handleRefreshShop"
+          :disabled="gameState.coins < 1 || gameState.loading"
+          :loading="gameState.loading"
         >
           <svg class="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
             <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
@@ -95,6 +108,7 @@
         </button>
       </div>
     </div>
+
 
     <!-- 战场区域 - 自适应高度 -->
     <div class="battlefield-container flex-1 relative">
@@ -125,7 +139,10 @@
 
             <!-- 悬停提示 -->
             <div class="absolute left-full ml-2 bg-gray-800/90 rounded-lg p-2 invisible group-hover:visible whitespace-nowrap z-10">
-              <div class="text-white text-sm">{{ player.username }}</div>
+              <div class="text-white text-sm">
+                {{ player.username }}
+                <span v-if="player.isBot" class="text-gray-400 text-xs">(机器人)</span>
+              </div>
               <div class="text-red-500 text-xs">生命值: {{ player.health }}/40</div>
             </div>
           </div>
@@ -222,7 +239,7 @@
     <!-- 玩家信息弹窗 -->
     <el-dialog
       v-model="playerInfoVisible"
-      :title="selectedPlayer?.username || '玩家信息'"
+      :title="getPlayerDisplayName(selectedPlayer)"
       width="300px"
     >
       <div class="flex flex-col items-center">
@@ -234,7 +251,8 @@
         </div>
 
         <!-- 玩家信息 -->
-        <div class="w-full space-y-2">
+        <div class="w-full space-y-3">
+          <!-- 基本信息 -->
           <div class="flex justify-between items-center">
             <span class="text-gray-400">生命值</span>
             <span class="text-red-500">{{ selectedPlayer?.health }}/40</span>
@@ -247,6 +265,51 @@
             <span class="text-gray-400">随从数量</span>
             <span class="text-blue-400">{{ getPlayerMinionCount(selectedPlayer) }}</span>
           </div>
+
+          <!-- 英雄信息 -->
+          <div class="mt-4 pt-4 border-t border-gray-700">
+            <div class="mb-2">
+              <h3 class="text-lg font-medium text-gray-200">英雄信息</h3>
+            </div>
+            <div v-if="selectedPlayer?.hero" class="bg-gray-800/50 rounded-lg p-3">
+              <div class="flex flex-col gap-3">
+                <!-- 英雄名称和描述 -->
+                <div>
+                  <h4 class="text-white font-medium text-lg mb-1">{{ selectedPlayer.hero.name }}</h4>
+                  <p class="text-gray-400 text-sm">{{ selectedPlayer.hero.description }}</p>
+                </div>
+                
+                <!-- 英雄技能 -->
+                <div class="mt-2 bg-gray-900/50 rounded-lg p-2">
+                  <div class="flex items-start gap-2">
+                    <div class="flex-shrink-0">
+                      <div class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-yellow-500" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM13 16h-2v2h2v-2zm0-6h-2v4h2v-4z"/>
+                        </svg>
+                      </div>
+                    </div>
+                    <div class="flex-1">
+                      <h5 class="text-yellow-400 font-medium">{{ selectedPlayer.hero.ability.name }}</h5>
+                      <p class="text-sm text-gray-400 mt-1">{{ selectedPlayer.hero.ability.description }}</p>
+                      <div class="mt-2 flex items-center gap-2">
+                        <span class="text-xs text-gray-500">技能费用:</span>
+                        <span class="text-xs px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded">
+                          {{ selectedPlayer.hero.ability.cost }} 金币
+                        </span>
+                        <span class="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded">
+                          {{ selectedPlayer.hero.ability.type === 'active' ? '主动技能' : '被动技能' }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-gray-500 text-center py-2">
+              未选择英雄
+            </div>
+          </div>
         </div>
       </div>
     </el-dialog>
@@ -254,34 +317,30 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, onBeforeUnmount } from 'vue'
+import { ref, onMounted, computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import GameCard from '../../components/game/GameCard.vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { ElMessage, ElDialog } from 'element-plus'
+import { storeToRefs } from 'pinia'
+import MinionCard from '@/components/MinionCard.vue'
 
 const router = useRouter()
 const route = useRoute()
 const gameStore = useGameStore()
 const wsService = useWebSocket()
+const { gameState } = storeToRefs(gameStore)
+
+const props = defineProps({
+  roomId: {
+    type: String,
+    required: true
+  }
+})
 
 // 添加响应式状态
 const loading = ref(true)
-const gameState = ref({
-  coins: 3,
-  tavernTier: 1,
-  maxTavernTier: 6,
-  phase: 'preparation',
-  turn: 1,
-  shopCards: [],
-  handCards: [],
-  board: {},
-  players: [],
-  currentPlayer: null,
-  shopFrozen: false,
-  hero: null
-})
 
 // 计算属性
 const coins = computed(() => gameState.value.coins)
@@ -325,11 +384,15 @@ const useHeroPower = () => {
   }
 }
 
-const refreshShop = () => {
-  if (gameState.value.coins >= 1) {
-    gameStore.refreshShop()
-  } else {
-    ElMessage.warning('金币不足')
+const refreshShop = async () => {
+  try {
+    const roomId = route.params.roomId
+    if (!roomId) {
+      throw new Error('房间ID不存在')
+    }
+    await gameStore.refreshShop(roomId)
+  } catch (error) {
+    console.error('刷新商店失败:', error)
   }
 }
 
@@ -377,79 +440,133 @@ const getPlayerMinionCount = (player) => {
   return Object.values(player.board).filter(Boolean).length
 }
 
+// 获取玩家显示名称
+const getPlayerDisplayName = (player) => {
+  if (!player) return '玩家信息'
+  return player.isBot ? `${player.username}(机器人)` : player.username
+}
+
 // 初始化游戏数据
 const initializeGameData = async () => {
   try {
-    loading.value = true
-    const roomId = route.params.roomId
+    console.log('🎮 初始化游戏数据');
+    loading.value = true;
+    
+    const roomId = route.params.roomId;
+    console.log('📍 房间ID:', roomId);
     
     // 从 localStorage 获取游戏数据
-    const savedGameData = localStorage.getItem(`game_${roomId}`)
+    const savedGameData = localStorage.getItem(`game_${roomId}`);
     if (!savedGameData) {
-      ElMessage.error('未找到游戏数据')
-      router.replace(`/game/${roomId}`)
-      return
+      console.error('❌ 未找到游戏数据');
+      ElMessage.error('未找到游戏数据');
+      router.replace(`/game/${roomId}`);
+      return;
     }
 
-    const data = JSON.parse(savedGameData)
-    gameState.value = {
-      ...gameState.value,
-      ...data,
-      board: data.board || {},
-      shopCards: data.shopCards || [],
-      handCards: data.handCards || [],
-      players: data.players || []
-    }
-
-    // 初始化游戏状态
-    gameStore.initializeGame(data)
+    const gameData = JSON.parse(savedGameData);
+    console.log('💾 读取游戏数据:', gameData);
     
-    loading.value = false
+    // 初始化游戏状态
+    await gameStore.initializeGame(gameData);
+    
+    // 初始化事件监听
+    gameStore.initializeGameEvents();
+    
+    console.log('✅ 游戏初始化完成');
+
   } catch (error) {
-    console.error('初始化游戏数据失败:', error)
-    ElMessage.error('初始化游戏失败')
-    router.replace(`/game/${route.params.roomId}`)
+    console.error('❌ 初始化游戏失败:', error);
+    ElMessage.error('初始化游戏失败');
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 组件卸载时清理
+onBeforeUnmount(() => {
+  console.log('🧹 清理游戏组件');
+  gameStore.cleanupGameEvents();
+  localStorage.removeItem(`game_${route.params.roomId}`);
+});
+
+// 计算属性
+const phaseText = computed(() => {
+  const phases = {
+    'preparation': '准备阶段',
+    'combat': '战斗阶段',
+    'finished': '游戏结束'
+  };
+  console.log('🔄 当前游戏阶段:', gameState.value.phase);
+  return phases[gameState.value.phase] || gameState.value.phase;
+});
+
+const canOperate = computed(() => {
+  const isPreparation = gameState.value.phase === 'preparation';
+  console.log('🎮 是否可操作:', isPreparation);
+  return isPreparation;
+});
+
+// 操作方法
+const handleRefreshShop = async () => {
+    try {
+        console.log('🔄 请求刷新商店');
+        console.log('当前游戏状态:', {
+            phase: gameState.value.phase,
+            turn: gameState.value.turn,
+            coins: gameState.value.coins
+        });
+
+        if (!canOperate.value) {
+            console.warn('⚠️ 当前阶段无法操作');
+            ElMessage.warning('当前阶段无法操作');
+            return;
+        }
+        await gameStore.refreshShop(props.roomId);
+    } catch (error) {
+        console.error('❌ 刷新商店失败:', error);
+    }
+};
+
+// 监听游戏状态变化
+watch(() => gameState.value.phase, (newPhase, oldPhase) => {
+    console.log('🔄 游戏阶段变化:', {
+        from: oldPhase,
+        to: newPhase,
+        turn: gameState.value.turn
+    });
+});
+
+// 添加购买随从的处理函数
+const handlePurchaseMinion = async (minion) => {
+  try {
+    if (!canOperate.value) {
+      ElMessage.warning('当前阶段无法操作');
+      return;
+    }
+    
+    if (gameState.value.coins < 3) {
+      ElMessage.warning('金币不足');
+      return;
+    }
+
+    // TODO: 实现购买随从的逻辑
+    console.log('尝试购买随从:', minion);
+    // await gameStore.purchaseMinion(props.roomId, minion._id);
+  } catch (error) {
+    console.error('购买随从失败:', error);
+    ElMessage.error(error.message || '购买失败');
   }
 }
 
 onMounted(async () => {
-  await initializeGameData()
-  
-  // 监听游戏状态更新
-  wsService.socket?.on('gameStateUpdate', (data) => {
-    gameState.value = {
-      ...gameState.value,
-      ...data
-    }
-  })
-  
-  // 监听回合开始
-  wsService.socket?.on('turnStart', (data) => {
-    gameStore.startNewTurn(data)
-  })
-  
-  // 监听战斗开始
-  wsService.socket?.on('combatStart', (data) => {
-    gameStore.startCombat(data)
-  })
-  
-  // 监听战斗结束
-  wsService.socket?.on('combatEnd', (data) => {
-    gameStore.endCombat(data)
-  })
-})
-
-onBeforeUnmount(() => {
-  // 清理事件监听
-  const events = ['gameStateUpdate', 'turnStart', 'combatStart', 'combatEnd']
-  events.forEach(event => {
-    wsService.socket?.off(event)
-  })
-  
-  // 清理游戏数据
-  const roomId = route.params.roomId
-  localStorage.removeItem(`game_${roomId}`)
-})
+    await initializeGameData();
+    console.log('🎮 游戏初始化完成，当前状态:', {
+        phase: gameState.value.phase,
+        turn: gameState.value.turn,
+        coins: gameState.value.coins
+    });
+});
 </script>
 
 <style scoped>
@@ -861,5 +978,54 @@ onBeforeUnmount(() => {
 
 .player-info:hover {
   transform: scale(1.1);
+}
+
+/* 添加以下样式来自定义 el-dialog */
+:deep(.el-dialog) {
+  background: #1a1a1a; /* 深灰黑色背景 */
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 20px;
+}
+
+:deep(.el-dialog__title) {
+  color: #ffffff;
+  font-size: 1.1rem;
+}
+
+:deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: #ffffff;
+}
+
+:deep(.el-dialog__body) {
+  background: #1a1a1a;
+  color: #ffffff;
+  padding: 20px;
+}
+
+:deep(.el-dialog__footer) {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 20px;
+}
+
+.phase-indicator {
+  @apply fixed top-4 left-1/2 transform -translate-x-1/2;
+  @apply bg-gray-800/80 backdrop-blur-sm;
+  @apply px-4 py-2 rounded-full;
+  @apply flex items-center gap-4;
+  @apply text-white text-sm;
+  @apply z-50;
+}
+
+.phase-text {
+  @apply font-medium;
+}
+
+.turn-text {
+  @apply text-yellow-400;
 }
 </style> 
