@@ -2,13 +2,14 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { wsService } from '@/services/websocket'
 import { ElMessage } from 'element-plus'
+import { GAME_CONFIG } from '@/config/gameConfig'
 
 export const useGameStore = defineStore('game', () => {
   // 游戏状态
   const gameState = ref({
-    coins: 3,
-    tavernTier: 1,
-    maxTavernTier: 6,
+    coins: GAME_CONFIG.INITIAL_COINS,
+    tavernTier: GAME_CONFIG.INITIAL_TAVERN_TIER,
+    maxTavernTier: GAME_CONFIG.MAX_TAVERN_TIER,
     turn: 1,
     phase: 'preparation', // preparation | combat
     shopMinions: [], // 商店随从
@@ -17,7 +18,8 @@ export const useGameStore = defineStore('game', () => {
     players: [],
     currentPlayer: null,
     hero: null,
-    loading: false
+    loading: false,
+    timeRemaining: GAME_CONFIG.TIME_LIMITS.HERO_SELECTION
   })
 
   // 初始化游戏
@@ -60,11 +62,11 @@ export const useGameStore = defineStore('game', () => {
         throw new Error('WebSocket 未连接');
       }
 
-      if (gameState.value.phase !== 'preparation') {
+      if (gameState.value.phase !== GAME_CONFIG.PHASES.PREPARATION) {
         throw new Error('当前不是准备阶段');
       }
 
-      if (gameState.value.coins < 1) {
+      if (gameState.value.coins < GAME_CONFIG.REFRESH_COST) {
         throw new Error('金币不足');
       }
 
@@ -78,7 +80,8 @@ export const useGameStore = defineStore('game', () => {
         gameState.value.coins = response.data.remainingCoins;
         console.log('🎮 商店随从已更新:', {
           count: gameState.value.shopMinions.length,
-          minions: gameState.value.shopMinions
+          minions: gameState.value.shopMinions,
+          remainingCoins: gameState.value.coins
         });
         ElMessage.success('商店刷新成功');
       } else {
@@ -98,9 +101,9 @@ export const useGameStore = defineStore('game', () => {
   // 重置游戏状态
   const resetGameState = () => {
     gameState.value = {
-      coins: 3,
-      tavernTier: 1,
-      maxTavernTier: 6,
+      coins: GAME_CONFIG.INITIAL_COINS,
+      tavernTier: GAME_CONFIG.INITIAL_TAVERN_TIER,
+      maxTavernTier: GAME_CONFIG.MAX_TAVERN_TIER,
       turn: 1,
       phase: 'preparation',
       shopMinions: [],
@@ -109,7 +112,8 @@ export const useGameStore = defineStore('game', () => {
       players: [],
       currentPlayer: null,
       hero: null,
-      loading: false
+      loading: false,
+      timeRemaining: GAME_CONFIG.TIME_LIMITS.HERO_SELECTION
     }
   }
 
@@ -129,10 +133,17 @@ export const useGameStore = defineStore('game', () => {
 
   // 更新游戏状态
   const updateGameState = (newState) => {
+    console.log('更新游戏状态:', {
+      current: gameState.value,
+      new: newState
+    });
+    
     gameState.value = {
       ...gameState.value,
       ...newState
-    }
+    };
+    
+    console.log('更新后的状态:', gameState.value);
   }
 
   // 开始新回合
@@ -178,6 +189,23 @@ export const useGameStore = defineStore('game', () => {
     wsService.emit('game:toggleShopFreeze')
   }
 
+  // 开始英雄选择
+  const startHeroSelection = () => {
+    gameState.value.phase = 'hero_selection';
+    gameState.value.timeRemaining = GAME_CONFIG.TIME_LIMITS.HERO_SELECTION;
+
+    // 开始倒计时
+    const timer = setInterval(() => {
+        if (gameState.value.timeRemaining > 0) {
+            gameState.value.timeRemaining--;
+        } else {
+            clearInterval(timer);
+            // 时间到，处理未选择的情况
+            handleHeroSelectionTimeout();
+        }
+    }, 1000);
+  }
+
   // 初始化游戏事件监听
   const initializeGameEvents = () => {
     console.log('🎮 初始化游戏事件监听');
@@ -187,54 +215,35 @@ export const useGameStore = defineStore('game', () => {
       console.log('🎮 游戏开始:', data);
       updateGameState({
         phase: data.phase,
-        turn: data.turn
+        turn: data.turn,
+        coins: data.coins, // 确保更新金币
+        health: data.health,
+        tavernTier: data.tavernTier,
+        shopMinions: data.shopMinions
       });
       ElMessage.success('游戏开始!');
     });
 
     // 准备阶段开始
-    wsService.socket.on('preparationPhaseStarted', () => {
-      console.log('🔄 准备阶段开始');
-      updateGameState({ phase: 'preparation' });
+    wsService.socket.on('preparationPhaseStarted', (data) => {
+      console.log('🔄 准备阶段开始:', data);
+      updateGameState({ 
+        phase: 'preparation',
+        coins: data.coins, // 确保更新金币
+        shopMinions: data.shopMinions,
+        turn: data.turn
+      });
       ElMessage.info('准备阶段开始 (30秒)');
     });
 
-    // 战斗阶段开始
-    wsService.socket.on('combatPhaseStarted', () => {
-      console.log('⚔️ 战斗阶段开始');
-      updateGameState({ phase: 'combat' });
-      ElMessage.info('战斗阶段开始');
-    });
-
-    // 回合开始
-    wsService.socket.on('turnStarted', (data) => {
-      console.log('🎲 回合开始:', data);
-      updateGameState({
-        coins: data.coins,
-        shopMinions: data.shopMinions,
-        turn: data.turn,
-        phase: 'preparation'
-      });
-      ElMessage.success(`第 ${data.turn} 回合开始`);
-    });
-
-    // 战斗结果
-    wsService.socket.on('battleResult', (data) => {
-      console.log('🏆 战斗结果:', data);
-      const { winner, loser, damage } = data;
-      
-      if (winner && loser) {
-        ElMessage.info(`${winner.username} 击败了 ${loser.username}, 造成 ${damage} 点伤害`);
-      }
-    });
-
-    // 游戏结束
-    wsService.socket.on('gameEnded', (data) => {
-      console.log('🏁 游戏结束:', data);
-      updateGameState({ phase: 'finished' });
-      
-      if (data.winner) {
-        ElMessage.success(`游戏结束! 胜利者: ${data.username}`);
+    // 刷新商店响应处理
+    wsService.socket.on('shopRefreshed', (data) => {
+      console.log('🏪 商店刷新响应:', data);
+      if (data.success) {
+        updateGameState({
+          shopMinions: data.data.minions,
+          coins: data.data.remainingCoins // 确保更新剩余金币
+        });
       }
     });
   };
@@ -274,6 +283,7 @@ export const useGameStore = defineStore('game', () => {
     toggleShopFreeze,
     getUpgradeCost,
     initializeGameEvents,
-    cleanupGameEvents
+    cleanupGameEvents,
+    startHeroSelection
   }
 }) 

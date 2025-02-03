@@ -18,27 +18,6 @@
 
     <!-- 游戏内容 -->
     <div class="relative z-10 min-h-screen flex flex-col">
-      <!-- 顶部信息栏 -->
-      <header class="bg-white/10 backdrop-blur-sm border-b border-white/20">
-        <div class="container mx-auto px-8 py-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-4">
-              <h1 class="text-xl font-bold text-white">对战中</h1>
-              <span class="text-white/60">
-                回合 {{ currentTurn }}
-              </span>
-            </div>
-            <button 
-              class="btn btn-danger"
-              @click="handleSurrender"
-              :disabled="loading"
-            >
-              投降
-            </button>
-          </div>
-        </div>
-      </header>
-
       <!-- 游戏区域 -->
       <main class="flex-grow container mx-auto px-8 py-8">
         <!-- 加载状态 -->
@@ -64,8 +43,6 @@
               <span>选择英雄: {{ formatTime(timeRemaining) }}</span>
             </div>
           </div>
-          
-          <h2 class="text-2xl font-bold text-center text-white mb-8">选择你的英雄</h2>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-6 px-4">
             <div 
               v-for="hero in availableHeroes" 

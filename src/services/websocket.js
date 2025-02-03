@@ -891,26 +891,32 @@ class WebSocketService {
   refreshShop({ roomId }) {
     return new Promise((resolve, reject) => {
       if (!this.socket?.connected) {
-        console.error('❌ 刷新商店失败: WebSocket未连接')
-        reject(new Error('WebSocket 未连接'))
-        return
+        console.error('❌ 刷新商店失败: WebSocket未连接');
+        reject(new Error('WebSocket 未连接'));
+        return;
       }
 
-      console.log('🔄 请求刷新商店:', { roomId })
+      console.log('🔄 请求刷新商店:', { 
+        roomId,
+        currentCoins: this.gameStore?.gameState.value.coins 
+      });
+
       this.socket.emit('refreshShop', { roomId }, (response) => {
-        console.log('📥 收到刷新商店响应:', response)
+        console.log('📥 收到刷新商店响应:', response);
+        
         if (response.success) {
           console.log('✅ 商店刷新成功:', {
             minions: response.data.minions.length,
-            remainingCoins: response.data.remainingCoins
-          })
-          resolve(response)
+            remainingCoins: response.data.remainingCoins,
+            beforeCoins: this.gameStore?.gameState.value.coins
+          });
+          resolve(response);
         } else {
-          console.error('❌ 商店刷新失败:', response.error)
-          reject(new Error(response.error))
+          console.error('❌ 商店刷新失败:', response.error);
+          reject(new Error(response.error));
         }
-      })
-    })
+      });
+    });
   }
 }
 
